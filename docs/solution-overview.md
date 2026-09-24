@@ -2,73 +2,66 @@
 
 ## What We Built
 
-The **Social Media Threat Intelligence Engine** is a specialized, open-source intelligence (OSINT) and cyber-investigative system built specifically for law enforcement officers, cyber intelligence cells, and digital forensics examiners.
+The **Social Media Threat Intelligence Engine** is an open-source intelligence (OSINT) and cyber-investigative tool for law enforcement officers, cyber cells, and digital forensics examiners.
 
-The engine automates the discovery of **Coordinated Inauthentic Behavior (CIB)** in high-velocity social streams, determines whether trending topics represent genuine citizen sentiment or an orchestrated astroturfing campaign, classifies the criminal threat profile (Incitement to Violence, Targeted Harassment, Organized Communal Disinformation), and automatically formats the evidence into a time-stamped **Police Threat Escalation Brief** aligned with the **Bharatiya Nyaya Sanhita (BNS) 2023** and **Information Technology Act 2000**.
+It automates the discovery of **Coordinated Inauthentic Behavior (CIB)** in a batch of social media posts, separates engineered campaigns from organic outrage, classifies the threat (Incitement, Targeted Harassment, Organized Misinformation, or Benign Coordination), and packages the evidence into a time-stamped **Police Threat Escalation Brief** with suggested **Bharatiya Nyaya Sanhita (BNS) 2023** and **Information Technology Act 2000** sections for legal review.
 
-Furthermore, it integrates natively with **IBM Bob** through the **Model Context Protocol (MCP)**, allowing an investigating officer to ask natural-language questions, trigger automated forensic audits, and execute incident runbooks directly within their workspace.
+It integrates with **IBM Bob** in two ways: Bob is the threat classifier and brief writer behind the web app, and through our **Model Context Protocol (MCP)** server an investigating officer can question the data in natural language from Bob chat.
+
+The core idea is **behaviour first, content second**: we first find accounts that act together, then read what they are saying.
 
 ---
 
 ## How It Works
 
-The platform operates through a 5-stage automated pipeline:
-
 ```
-[Social Media Stream / Ingestion API]
+[Post batch: CSV / JSON]
                  │
                  ▼
-[Stage 1: Multi-Signal CIB Forensic Engine]
-   ├── Temporal Burst Synchronicity Analysis (Δt < 120s)
-   ├── Lexical & Semantic Near-Duplicate Fingerprinting (Jaccard + Cosine)
-   └── Account Anomaly & Bot Score Heuristics
+[Stage 0: Normalize]  common schema: post_id, account_id, created_at, text, repost_of, reply_to, urls, hashtags, account_created_at
                  │
                  ▼
-[Stage 2: watsonx.ai Granite 3.0 Threat Classifier]
-   ├── Zero-shot & Few-shot Criminal Threat Categorization
-   ├── Threat Severity Rating (Critical / High / Medium / Low)
-   └── Intent & Target Entity Extraction
+[Stage 1: Coordination Networks]  (QUT coordination-network-toolkit)
+   ├── co-tweet / co-similarity   same or near-identical text (Jaccard) within a time window
+   ├── co-link                     same URL shared within a time window
+   └── co-reply / co-retweet       replying to / reposting the same post within a time window
                  │
                  ▼
-[Stage 3: Indian Statutory Legal Mapping Engine]
-   ├── BNS 2023 (Sec 196, 197, 353, 79)
-   ├── IPC (Sec 153A, 153B, 505, 509)
-   └── IT Act 2000 (Sec 66A, 67, 69A Emergency Blocking)
+[Stage 2: Campaign Discovery]  (NetworkX Louvain community detection on the merged, weighted graph)
                  │
                  ▼
-[Stage 4: IBM Bob MCP Server & AI Agent Interface]
-   ├── Natural Language Codebase & Incident Querying
-   ├── Automated Runbook Execution (e.g. hash preservation, IP trace request)
-   └── Subagent-driven Evidence Compilation
+[Stage 3: Explainable CIB Score 0–100]  speed · duplication · multi-signal · account age · burstiness · hashtag/URL concentration
                  │
                  ▼
-[Stage 5: Police Command Dashboard & Evidentiary Brief]
-   ├── Live Stream & CIB Coordination Radar
-   ├── Account Network Graph Visualization
-   └── Time-stamped, Court-Admissible Police Threat Brief Export (PDF/Print)
+[Stage 4: IBM Bob Threat Analysis]  threat type · target · severity · real-world call to action · legal suggestions · evidence post IDs
+                 │
+                 ▼
+[Stage 5: Escalation Rules + Police Threat Brief]  MONITOR / ALERT / URGENT · SHA-256 evidence hashes · print-ready
 ```
 
 ### Detailed Operational Steps
 
-1. **Stream Ingestion & Normalization:** Ingests batches of social posts (Twitter/X, Telegram messages, public group forwards). Cleanses text, standardizes timestamps, extracts user metadata, handles, and hashtags.
-2. **Coordinated Inauthentic Behavior (CIB) Detection:**
-   - Computes **temporal synchronicity**: flags sudden surges where multiple distinct handles post identical or near-identical messages within short time windows (e.g., 50+ posts in 2 minutes).
-   - Computes **semantic duplicate clustering**: uses n-gram Jaccard similarity and MinHash-style token overlapping to group sock-puppets spreading the same narrative with minor punctuation changes.
-   - Evaluates **account metadata flags**: newly created accounts, generic alphanumeric handles, default avatar indicators, and abnormal posting cadence.
-3. **Semantic Threat Classification via watsonx.ai Granite 3.0:**
-   - Evaluates the cluster's messaging content against criminal offense taxonomies:
-     - `INCITEMENT_TO_VIOLENCE`: Direct calls for street mobilization, rioting, weapons, or arson.
-     - `COMMUNAL_MISINFORMATION`: Fabrication of inter-faith atrocities or desecration claims.
-     - `TARGETED_HARASSMENT`: Doxxing, targeted online abuse of public servants or private citizens.
-     - `BENIGN_ORGANIC`: Legitimate political discourse, news reporting, or citizen feedback.
-4. **Statutory Penal Mapping (BNS 2023 & IT Act):**
-   - Correlates the classified offense and evidence with actionable statutory sections:
-     - **BNS Sec 196 (IPC 153A):** Promoting enmity between different groups on grounds of religion, race, place of birth, residence, language, etc.
-     - **BNS Sec 197 (IPC 153B):** Imputations and assertions prejudicial to national integration.
-     - **BNS Sec 353 (IPC 505):** Statements conducing to public mischief, especially with intent to incite riot.
-     - **IT Act Sec 69A:** Directions for blocking public access to information through any computer resource in the interest of public order.
-5. **Incident Packaging & Police Threat Brief Generation:**
-   - Generates a formal, time-stamped **Threat Brief** ready for presentation to the Station House Officer (SHO) and District Cyber Cell incharge, complete with actionable escalation steps (e.g., recommend Sec 69A intermediary blocking notice, deploy anti-riot beat patrols to specific geolocations, issue fact-check rejoinder).
+1. **Ingestion & Normalization:** Loads a batch of posts and converts it into one common schema, so the rest of the pipeline works the same for synthetic data and research datasets.
+2. **Coordination Detection:** For every pair of accounts, counts how often they performed the same action within a short time window (60 seconds by default). A minimum edge weight of 2 filters out one-off coincidences. Output is an account-to-account graph.
+3. **Campaign Discovery:** Merges all coordination types into one weighted graph, drops weak edges, and runs community detection. Each community of 5+ accounts becomes a candidate campaign.
+4. **Explainable CIB Scoring:** Each campaign gets a 0–100 score from transparent features — median seconds between coordinated posts, share of near-duplicate posts, number of coordination types, median account age, peak posts per minute, and hashtag/URL concentration. Each feature's contribution is stored so the UI can show *why* a campaign was flagged.
+5. **IBM Bob Threat Analysis:** For each top campaign, the backend sends Bob the campaign statistics and representative posts. Bob returns structured JSON:
+     - `INCITEMENT`: calls for mobilization, violence, or arson.
+     - `ORGANIZED_MISINFORMATION`: fabricated claims pushed by the network.
+     - `TARGETED_HARASSMENT`: coordinated abuse of a person or group.
+     - `BENIGN_COORDINATION`: fan clubs, news sharing, organic protest organizing — coordination that is not a threat.
+
+   Every post ID Bob cites is checked in code against the campaign; unverified output is flagged.
+6. **Legal Suggestions (for verification):**
+     - **BNS 196 (IPC 153A):** Promoting enmity between groups.
+     - **BNS 197 (IPC 153B):** Imputations prejudicial to national integration.
+     - **BNS 351 (IPC 506):** Criminal intimidation.
+     - **BNS 353 (IPC 505):** Statements conducing to public mischief.
+     - **BNS 356 (IPC 499):** Defamation.
+     - **BNS 79 (IPC 509):** Insulting the modesty of a woman.
+     - **IT Act 66D:** Cheating by personation using a computer resource (impersonation accounts).
+     - **IT Act 69A:** Blocking of public access to information in the interest of public order.
+7. **Escalation & Brief:** Deterministic rules set the escalation level (e.g., incitement plus a real-world call to action → URGENT), Bob explains it, and the engine renders a time-stamped brief for the SHO / District Cyber Cell with the timeline, campaign table, evidence list with SHA-256 hashes, legal suggestions, recommended actions, and limitations.
 
 ---
 
@@ -76,20 +69,20 @@ The platform operates through a 5-stage automated pipeline:
 
 | Decision | Rationale |
 |---|---|
-| **FastAPI Backend + Modular Architecture** | Provides sub-millisecond asynchronous JSON request processing, native OpenAPI documentation, and effortless integration with machine learning pipelines. |
-| **Multi-Signal CIB Scoring over Single-Metric Thresholds** | Single metrics (like post count) yield false positives during breaking news events. Combining temporal velocity, text duplication, and account age flags ensures high precision. |
-| **Dual BNS 2023 & IPC Cross-Mapping** | India enacted the Bharatiya Nyaya Sanhita (BNS) in 2023 (effective July 2024) to replace the IPC. Police officers and prosecutors are actively transitioning; providing both statutory references is essential for legal validity. |
-| **Model Context Protocol (MCP) for IBM Bob** | Implementing an MCP server enables IBM Bob to directly act as an AI cyber forensic assistant, allowing officers to interrogate data and execute runbooks via natural language inside their IDE/environment. |
-| **Zero-Dependency Lightweight Fallback Engine** | Ensures that even in offline field environments or if cloud API credentials are temporarily restricted, the platform remains fully functional and reliable for evaluators and officers. |
+| **Behaviour-first detection** | Per-post toxicity classifiers miss campaigns where each post looks harmless. Coordination between accounts is the defining signal of CIB. |
+| **Published coordination methods** | We build on the QUT Digital Observatory toolkit, which implements coordination-network methods from peer-reviewed research, instead of inventing thresholds from scratch. |
+| **Multi-signal, explainable score** | Single metrics (like post count) give false positives during breaking news. Combining signals — and showing each one — lets an officer check the reasoning. |
+| **Benign coordination as a class** | Fan groups and news sharing also coordinate. Explicitly recognising them reduces false alarms. |
+| **Bob for semantics, rules for escalation** | Bob handles language understanding; escalation levels come from fixed rules so the decision is predictable and auditable. |
+| **Dual BNS 2023 & IPC references** | BNS replaced the IPC in July 2024; officers and prosecutors still cross-reference both. |
+| **Cached Bob results** | Classifications are cached per campaign, so re-opening a case costs nothing and the demo works offline once analysed. |
 
 ---
 
 ## IBM Technologies Used
 
-### 1. IBM Bob (AI SDLC Partner & MCP Agent)
-- **Codebase Development & Architecture:** IBM Bob guided the architecture, refactoring, and test suite implementation of the threat intelligence engine.
-- **Model Context Protocol (MCP) Integration:** Bob connects directly to our custom MCP server (`src/backend/bob_mcp.py`), exposing tools such as `analyze_threat_batch`, `generate_police_brief`, and `query_suspect_network`. An investigator chatting with Bob can ask: *"Bob, run a CIB scan on the latest batch and draft a Section 69A blocking brief for the SHO."*
-
-### 2. watsonx.ai Granite 3.0
-- **Granite 3.0 8B Instruct:** Employed for nuanced zero-shot semantic threat classification and intent extraction. Granite 3.0 provides superior reasoning capabilities on multilingual and code-mixed vernacular (such as Hinglish) commonly found in Indian social media discourse.
-- **Structured JSON Generation:** Granite outputs structured forensic JSON containing threat severity, targeted groups, detected mobilization rhetoric, and confidence levels.
+### IBM Bob
+- **Threat classifier and brief writer:** The backend calls Bob headless (`bob run --format json`) with our custom `osint-analyst` mode to classify campaigns and draft briefs.
+- **MCP investigation console:** Our MCP server exposes tools such as `list_campaigns`, `get_campaign`, `get_posts`, and `timeline`. An officer chatting with Bob can ask *"Which accounts started the rumour in campaign 2?"* and Bob gathers the evidence itself.
+- **Custom mode, rules and skills:** The repository's `.bob/` folder holds the `osint-analyst` mode, rules (legal reference table, escalation matrix, no-profiling rule), and a `threat-brief` skill.
+- **AI coding partner:** Bob was used to plan and build the project.

@@ -2,35 +2,33 @@
 
 ## High-Level Architecture
 
-The **Social Media Threat Intelligence Engine** is engineered as a decoupled, microservices-ready forensic pipeline. It consists of an ingestion ingestion layer, an algorithmic CIB correlation pipeline, an LLM-driven threat classifier powered by watsonx.ai Granite 3.0, a statutory legal rulebase, an IBM Bob Model Context Protocol (MCP) server, and an interactive Cyber Command Center interface.
+The **Social Media Threat Intelligence Engine** is a pipeline with five parts: an ingestion layer, a coordination-detection and campaign-scoring engine, an IBM Bob threat-analysis layer, a rule-based escalation and brief generator, and two officer interfaces (a web Command Center and Bob chat via MCP).
 
 ```mermaid
 graph TD
-    subgraph Ingestion_Layer ["1. Ingestion Layer"]
-        A1[Mock Social Media Streams] -->|Batch Ingest| B[Data Normalizer & Tokenizer]
-        A2[Telegram / WhatsApp Dump] -->|JSON / CSV| B
-        A3[X / Twitter Simulated Feed] -->|REST API| B
+    subgraph Ingestion_Layer ["1. Ingestion"]
+        A1[Synthetic post batch] --> B[Normalizer: common schema]
+        A2[Research datasets CSV/JSON] --> B
     end
 
-    subgraph Forensic_Pipeline ["2. Forensic Analysis & CIB Engine"]
-        B --> C[Temporal Burst Analyzer]
-        B --> D[Semantic & Jaccard Fingerprinter]
-        B --> E[Account Anomaly Profiler]
-        C & D & E --> F[CIB Fusion Engine & Network Graph]
+    subgraph Forensic_Pipeline ["2. CIB Engine"]
+        B --> C[Coordination networks: co-tweet, co-similarity, co-link, co-reply, co-retweet]
+        C --> D[Campaign discovery: NetworkX Louvain]
+        D --> E[Explainable CIB score 0-100]
     end
 
-    subgraph Intelligence_Core ["3. AI & Statutory Core"]
-        F --> G[watsonx.ai Granite 3.0 Classifier]
-        G -->|Threat Category & Intent| H[BNS 2023 / IPC / IT Act Legal Mapper]
-        H --> I[Threat Escalation & Brief Generator]
+    subgraph Intelligence_Core ["3. Analysis & Escalation"]
+        E --> G[IBM Bob threat analysis via bob run]
+        G -->|Threat type, severity, evidence IDs| H[Evidence check + legal suggestions]
+        H --> I[Escalation rules + Threat Brief generator]
     end
 
-    subgraph Integration_Layer ["4. IBM Bob & Officer Interfaces"]
-        I --> J[IBM Bob MCP Server]
-        J <-->|MCP Protocol / Prompts| K[IBM Bob AI Agent]
-        I --> L[FastAPI REST API Endpoints]
-        L --> M[Forensic Command Center Web UI]
-        M --> N[Court-Admissible Threat Brief PDF/Print]
+    subgraph Integration_Layer ["4. Officer Interfaces"]
+        I --> L[FastAPI REST API]
+        L --> M[Command Center Web UI]
+        M --> N[Print-ready Threat Brief]
+        E --> J[MCP server]
+        J <-->|MCP tools| K[IBM Bob chat]
     end
 ```
 
@@ -40,13 +38,14 @@ graph TD
 
 | Component | Technology | Responsibility |
 |---|---|---|
-| **API Server & Routing** | FastAPI / Uvicorn (Python 3.10+) | Asynchronous HTTP endpoints for post ingestion, analysis orchestration, brief export, and static frontend serving. |
-| **CIB Detection Core** | Python (NumPy, Collections, Regex) | Calculates temporal burst velocity ($\Delta t \le 120s$), pairwise Jaccard similarity, hash-frequency distributions, and bot-likelihood indicators. |
-| **Threat Classifier** | IBM watsonx.ai (Granite 3.0 8B Instruct) / Local NLP Fallback | Evaluates contextual semantics, identifies inciting mobilization language, communal hate speech, and targeted harassment vectors. |
-| **Statutory Legal Mapper** | Python Knowledge Base Rulebase | Correlates forensic signals with Bharatiya Nyaya Sanhita (BNS) 2023, Indian Penal Code (IPC), and Information Technology Act 2000 provisions. |
-| **IBM Bob MCP Server** | Model Context Protocol (JSON-RPC) | Exposes standard MCP tools allowing IBM Bob to run cyber investigations, query suspect networks, and generate police briefs via natural language. |
-| **Forensic Command UI** | HTML5, Vanilla CSS, JavaScript, Canvas Graph | High-contrast, responsive cyber cell dashboard with live post triage, cluster visualization, legal reference explorer, and brief preview. |
-| **Police Brief Engine** | Jinja2 Template Engine / Markdown | Renders time-stamped, official-format Cyber Threat Intelligence Briefs with incident identifiers, evidentiary hashes, and immediate escalation steps. |
+| **API Server** | FastAPI / Uvicorn (Python 3.10+) | Endpoints for dataset upload, analysis, campaigns, graph data, Bob classification, and brief export; serves the static frontend. |
+| **Coordination Detection** | coordination-network-toolkit (QUT, MIT) + SQLite | Builds account-to-account coordination networks within configurable time windows. |
+| **Campaign Discovery & Scoring** | NetworkX, Python | Community detection on the merged graph; explainable per-feature CIB score. |
+| **Threat Analysis** | IBM Bob (`bob run --mode osint-analyst --format json`) | Classifies each campaign, extracts target and narrative, suggests legal sections, cites evidence post IDs. Results cached in SQLite. |
+| **Legal Reference & Escalation** | Python rule tables | BNS 2023 / IPC / IT Act reference table and deterministic escalation matrix (MONITOR / ALERT / URGENT). |
+| **IBM Bob MCP Server** | Python MCP SDK | Exposes `list_campaigns`, `get_campaign`, `get_posts`, `timeline` so officers can investigate from Bob chat. |
+| **Command Center UI** | HTML, CSS, JavaScript, Cytoscape.js, Chart.js | Upload, overview dashboard, posts-per-minute timeline, network graph coloured by campaign, "why flagged" panel, brief preview. |
+| **Threat Brief** | Markdown/HTML + print CSS | Time-stamped brief with SHA-256 hashes, timeline, evidence table, legal suggestions, recommended actions. |
 
 ---
 
@@ -58,46 +57,44 @@ sequenceDiagram
     actor Officer as Cyber Cell Officer / Duty SHO
     participant UI as Command Center UI
     participant API as FastAPI Backend
-    participant CIB as CIB Detection Engine
-    participant LLM as watsonx.ai Granite 3.0
-    participant Legal as BNS / IT Act Mapper
-    participant Bob as IBM Bob (via MCP)
+    participant CIB as CIB Engine
+    participant Bob as IBM Bob
 
-    Officer->>UI: Uploads/Loads Social Post Batch
-    UI->>API: POST /api/ingest & /api/analyze
-    API->>CIB: Ingest raw posts & calculate CIB metrics
-    CIB-->>API: Clusters identified (Burst rate, Similarity matrix, Bot scores)
-    API->>LLM: Send suspicious post clusters for threat classification
-    LLM-->>API: Threat type: Incitement, Severity: CRITICAL, Rationale
-    API->>Legal: Map offense to BNS 2023 & IT Act sections
-    Legal-->>API: BNS Sec 196/353, IT Act Sec 69A recommendations
-    API-->>UI: Complete threat intelligence JSON & Network Graph data
-    UI->>Officer: Displays interactive clusters, threat radars, and alerts
-    
-    opt Investigation via IBM Bob
-        Officer->>Bob: "Bob, analyze the high-risk cluster and draft a brief"
-        Bob->>API: Call MCP Tool: generate_police_brief(cluster_id="cluster-01")
-        API-->>Bob: Time-stamped Police Threat Brief with legal grounds
-        Bob-->>Officer: Summarizes findings and presents official brief
+    Officer->>UI: Uploads a post batch
+    UI->>API: POST /api/datasets, POST /api/datasets/{id}/analyze
+    API->>CIB: Build coordination networks, find campaigns, score them
+    CIB-->>API: Campaigns with scores and feature breakdown
+    API-->>UI: Campaign list, timeline and graph data
+    Officer->>UI: Clicks "Ask Bob" on a campaign
+    UI->>API: POST /api/campaigns/{id}/classify
+    API->>Bob: bob run (campaign stats + representative posts)
+    Bob-->>API: JSON: threat type, severity, legal suggestions, evidence IDs
+    API->>API: Verify evidence IDs, apply escalation rules, cache result
+    API-->>UI: Classification + escalation level
+    Officer->>UI: Clicks "Generate Threat Brief"
+    UI->>Officer: Print-ready, time-stamped brief
+
+    opt Investigation from Bob chat
+        Officer->>Bob: "Which accounts started campaign 2?"
+        Bob->>API: MCP tools: get_campaign, timeline, get_posts
+        Bob-->>Officer: Answer with cited post IDs
     end
-
-    Officer->>UI: Clicks "Generate Official Police Threat Brief"
-    UI->>Officer: Formatted, print-ready Escalation Brief for Law Enforcement
 ```
 
 ---
 
 ## Security Considerations
 
-1. **Air-Gapped & Offline Operability:** The core CIB engine and legal mapping rulebase operate fully in-memory without mandatory external cloud connections, ensuring continuity during cyber blackouts or field deployments.
-2. **Credential Sanitization:** All watsonx.ai API keys and cloud credentials are read exclusively from environment variables (`.env`), enforced by `.gitignore` rules.
-3. **Evidentiary Integrity & Cryptographic Hashing:** Every ingested batch and generated threat brief includes SHA-256 integrity checksums, establishing a tamper-evident chain of custody compliant with Section 63 of the Bharatiya Sakshya Adhiniyam (BSA) 2023 (electronic evidence admissibility).
-4. **Principle of Least Privilege:** Read-only analysis modes prevent accidental data mutation during sensitive criminal investigations.
+1. **Offline core:** Coordination detection, scoring, and legal/escalation rules run locally without cloud calls; only the Bob analysis step needs a connection, and its results are cached.
+2. **Credential handling:** Keys (e.g., `BOB_API_KEY`) are read only from environment variables; `.env` is excluded by `.gitignore`.
+3. **Evidence integrity:** Every input batch and evidence post is hashed with SHA-256 and the hashes are printed in the brief, supporting a tamper-evident record for a Section 63 Bharatiya Sakshya Adhiniyam (BSA) 2023 electronic-evidence certificate.
+4. **No profiling:** Classification is based on behaviour and content; rules instruct Bob never to infer or label people by religion, caste, or community.
+5. **Mock data:** The demo uses fictional places and groups only.
 
 ---
 
 ## Scalability Notes
 
-- **Stream Ingestion Scaling:** The stateless FastAPI architecture can be scaled horizontally across container clusters (e.g., Red Hat OpenShift / Kubernetes) behind an NGINX ingress.
-- **Asynchronous Batch Processing:** For millions of tweets during a major law-and-order incident, ingestion tasks can be dispatched to Celery/Redis background queues or Apache Kafka topics.
-- **LLM Rate-Limit Optimization:** To prevent watsonx.ai latency bottlenecks during viral surges, the CIB engine acts as an aggressive filter: only posts exhibiting high coordination scores ($CIB \ge 0.65$) are dispatched to the LLM for deep semantic classification, reducing inference costs by over 90%.
+- **Coordination computation:** The toolkit is parallelised and processes millions of posts on one machine for the simpler network types; co-similarity is the most CPU-intensive.
+- **Horizontal scaling:** The stateless FastAPI service can be scaled behind a load balancer; long analyses can move to a background job queue.
+- **LLM cost control:** The CIB engine acts as a filter — only high-scoring campaigns (not individual posts) are sent to Bob, and results are cached.

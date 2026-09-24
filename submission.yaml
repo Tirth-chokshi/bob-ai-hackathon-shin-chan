@@ -28,33 +28,34 @@ submission:
     digital signals into actionable, BNS/IPC-mapped evidentiary briefs before offline violence erupts.
 
   solution_summary: >                  # REQUIRED — 1-3 sentences. What did you build?
-    We built an AI-powered OSINT threat intelligence platform driven by IBM Bob and watsonx.ai Granite 3.0 that
-    ingests multi-platform social feeds, detects coordinated inauthentic behavior (CIB) across bot swarms, classifies
-    threat types (incitement, targeted harassment, organized misinformation), maps evidence to BNS 2023 and IT Act
-    provisions, and auto-generates time-stamped police threat briefs with tactical escalation runbooks.
+    An OSINT threat intelligence engine that detects coordinated inauthentic behaviour (CIB) in a batch of social media
+    posts by finding accounts that post, share links or reply together within seconds, then uses IBM Bob to classify each
+    campaign (incitement, targeted harassment, organized misinformation, or benign), suggest BNS 2023 / IT Act sections
+    for legal review, and draft a time-stamped police threat brief with escalation steps.
 
   key_features:                        # REQUIRED — List 3 to 5 specific features you implemented
-    - "Multi-Signal CIB Detection: Detects posting burst velocity, temporal synchronicity, and semantic near-duplicate messaging"
-    - "Threat Classification via watsonx.ai Granite 3.0: Categorizes incitement, harassment, and communal misinformation with confidence scoring"
-    - "Statutory Legal Mapping: Maps digital signals to Bharatiya Nyaya Sanhita (BNS) 2023 (Sec 196, 197, 353, 79) and IT Act 2000 (Sec 66A, 67, 69A)"
-    - "IBM Bob Agent & MCP Integration: Model Context Protocol endpoints allowing IBM Bob to run investigative queries and execute triage runbooks"
-    - "Automated Police Threat Brief Generator: Generates time-stamped, court-admissible threat briefs and Section 69A blocking recommendations"
+    - "Multi-signal CIB detection: co-tweet, co-similarity, co-link, co-reply and co-retweet networks with community detection and an explainable 0-100 campaign score"
+    - "IBM Bob threat classifier: labels each campaign (incitement, harassment, misinformation, benign) and cites evidence post IDs that are verified in code"
+    - "Legal suggestions: BNS 2023 (196, 197, 351, 353, 356, 79) and IT Act 2000 (66D, 67, 69A) mappings, marked for legal verification"
+    - "IBM Bob MCP investigation console: officers query campaigns, posts and timelines in natural language"
+    - "Police threat brief: time-stamped, print-ready brief with SHA-256 hashes of the batch and every evidence post"
 
   tech_stack:
     languages: ["Python", "JavaScript"]
-    frameworks: ["FastAPI", "Uvicorn", "Pydantic", "Jinja2"]
-    ibm_technologies: ["IBM Bob", "watsonx.ai Granite 3.0", "Bob MCP Protocol"]
-    databases: ["SQLite", "In-Memory Vector Cache"]
-    other: ["HTML5", "Modern CSS", "Chart.js", "GitHub Actions"]
+    frameworks: ["FastAPI", "Uvicorn", "Pydantic", "NetworkX", "coordination-network-toolkit"]
+    ibm_technologies: ["IBM Bob", "IBM Bob MCP integration"]
+    databases: ["SQLite"]
+    other: ["HTML5", "CSS", "Cytoscape.js", "Chart.js", "GitHub Actions"]
 
   what_we_are_most_proud_of: >         # Optional but recommended — guides judges to your best work
-    The automated bridge between algorithmic Coordinated Inauthentic Behavior (CIB) signal detection and Indian penal
-    jurisprudence (BNS 2023 / IPC / IT Act), enabling cyber cell officers and Station House Officers (SHOs) to move from raw
-    social media chatter to a court-admissible, time-stamped escalation brief in seconds via IBM Bob.
+    Behaviour-first detection: the engine flags coordinated campaigns even when each individual post looks harmless, and
+    bridges that signal to Indian law (BNS 2023 / IT Act) so a cyber cell officer goes from a raw post batch to a
+    time-stamped escalation brief with IBM Bob.
 
   known_limitations: >                 # Optional but recommended — be honest about gaps
-    Current ingestion operates on high-fidelity synthetic multi-account batch feeds simulating X/Twitter, Telegram, and WhatsApp;
-    live Firehose streaming requires active platform API keys. Primary NLP models are optimized for English and Hinglish vernacular.
+    Runs on a synthetic post batch with planted campaigns plus public research datasets; no live platform ingestion.
+    Scores and classifications are decision support, and legal sections need verification by a legal officer.
+    CIB score weights are hand-set; classification quality on Hindi/Hinglish is not yet formally evaluated.
 
 # =============================================================================
 # ARTIFACT LOCATIONS
