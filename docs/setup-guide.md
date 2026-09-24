@@ -1,79 +1,70 @@
-# Setup Guide
+# Setup Guide: Social Media Threat Intelligence Engine
 
-> **This file is read by the automated evaluation pipeline. Be precise and complete.**
+> **This setup guide contains complete instructions to set up and run the template locally.**
+
+---
 
 ## Prerequisites
 
-Before you begin, ensure you have the following installed:
+Before you begin, ensure you have the following installed on your machine:
 
-- [ ] [e.g., Python 3.11+]
-- [ ] [e.g., Node.js 18+]
-- [ ] [e.g., Docker Desktop]
-- [ ] [e.g., An IBM Cloud account with watsonx.ai access]
+- **Python 3.10+**
+- **pip** (Python package manager)
+- **Git**
+
+---
 
 ## Environment Variables
 
-Copy `.env.example` to `.env` and fill in the values:
+Copy the template environment file to `.env`:
 
 ```bash
-cp .env.example .env
+cp src/.env.example src/.env
 ```
 
 | Variable | Description | Required |
 |---|---|---|
-| `WATSONX_API_KEY` | Your IBM watsonx.ai API key | Yes |
-| `WATSONX_PROJECT_ID` | Your watsonx.ai project ID | Yes |
-| `DATABASE_URL` | PostgreSQL connection string | Yes |
-| `SLACK_WEBHOOK_URL` | Slack webhook for alerts | No |
+| `WATSONX_API_KEY` | Your IBM Cloud watsonx.ai API key | Optional |
+| `WATSONX_PROJECT_ID` | Your watsonx.ai Project ID | Optional |
+| `APP_PORT` | Application server port | Optional (Default: 8000) |
+| `APP_ENV` | Application environment (`development` / `production`) | Optional |
+
+---
 
 ## Installation
 
+### 1. Clone the Repository
+
 ```bash
-# 1. Clone the repository
-git clone https://github.com/[your-org]/[your-repo].git
-cd [your-repo]
-
-# 2. Install backend dependencies
-[your command — e.g.: pip install -r requirements.txt]
-
-# 3. Install frontend dependencies (if applicable)
-[your command — e.g.: cd frontend && npm install]
-
-# 4. Set up the database (if applicable)
-[your command — e.g.: python manage.py migrate]
+git clone https://github.com/Tirth-chokshi/bob-ai-hackathon-shin-chan.git
+cd bob-ai-hackathon-shin-chan
 ```
+
+### 2. Configure Environment
+
+```bash
+cp src/.env.example src/.env
+```
+
+### 3. Install Dependencies
+
+```bash
+pip install -r src/requirements.txt
+```
+
+---
 
 ## Running the Application
 
 ```bash
-# Start the backend
-[your command — e.g.: uvicorn app.main:app --reload]
-
-# Start the frontend (in a separate terminal, if applicable)
-[your command — e.g.: cd frontend && npm run dev]
+python src/main.py
 ```
 
-The application will be available at: `http://localhost:[PORT]`
-
-## Running Tests
-
-```bash
-[your test command — e.g.: pytest tests/ -v]
-```
-
-## Quick Demo (Optional)
-
-If you have a demo script or sample data to showcase the project quickly:
-
-```bash
-[e.g.: python demo/seed_demo_data.py]
-[e.g.: open http://localhost:8000/demo]
-```
+---
 
 ## Troubleshooting
 
 | Issue | Solution |
 |---|---|
-| [e.g., `ModuleNotFoundError`] | [e.g., Run `pip install -r requirements.txt` again] |
-| [e.g., Database connection refused] | [e.g., Ensure PostgreSQL is running: `docker compose up db`] |
-| [e.g., watsonx.ai 401 error] | [e.g., Check `WATSONX_API_KEY` in your `.env` file] |
+| Missing dependencies | Run `pip install -r src/requirements.txt` |
+| Python version error | Ensure Python 3.10+ is installed and active in your terminal |
