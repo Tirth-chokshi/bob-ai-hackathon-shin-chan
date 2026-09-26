@@ -26,7 +26,7 @@ from bob.client import BobNotConfigured, cached_verdict, classify
 from brief.render import render_brief
 
 log = logging.getLogger(__name__)
-DEMO_NAME = "Sundarpur scenario (synthetic)"
+DEMO_NAME = "Demo dataset (pre-analysed)"  # shown in the datasets list
 
 # ponytail: in-memory job table for this one server process; a restart forgets running jobs (re-run the analysis)
 JOBS: dict[str, dict] = {}

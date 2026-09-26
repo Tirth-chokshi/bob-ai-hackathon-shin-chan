@@ -31,7 +31,7 @@ function getInitialTheme() {
 // Location is kept in the URL (#/view/dataset/campaign) so a reload or a shared link opens the same place
 function readHash() {
   const [view, datasetId, campaignId] = window.location.hash.replace(/^#\/?/, '').split('/')
-  return { view: VIEWS.some((v) => v.id === view) ? view : 'overview', datasetId: datasetId || null, campaignId: campaignId || null }
+  return { view: VIEWS.some((v) => v.id === view) ? view : 'datasets', datasetId: datasetId || 'demo', campaignId: campaignId || null }
 }
 
 export default function App() {
@@ -183,7 +183,7 @@ export default function App() {
         <div className="max-w-[1440px] mx-auto px-4 lg:px-6 min-h-14 py-2 flex flex-wrap items-center gap-x-6 gap-y-2">
           <div className="flex items-center gap-2 font-semibold">
             <ShieldCheck className="w-5 h-5 text-accent" aria-hidden />
-            Threat Intel Engine
+            Social-Threat Intel Engine
           </div>
           <nav className="flex items-center gap-1" aria-label="Pages">
             {VIEWS.map((v) => (
