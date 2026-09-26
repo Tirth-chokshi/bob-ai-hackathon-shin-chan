@@ -13,7 +13,7 @@ The Command Center is a work tool for a cyber cell officer. It is used under tim
 
 ## Tokens
 
-All colours are CSS variables in `src/web/src/index.css`, with a light and a dark value. The dark values follow the operating system setting. Components use only these tokens, never raw colours.
+All colours are CSS variables in `src/web/src/index.css`, with a light and a dark value. The first visit follows the operating system setting; the sun/moon button in the header switches theme and the choice is remembered. Components use only these tokens, never raw colours.
 
 | Token | Use | Light | Dark |
 |---|---|---|---|
@@ -56,7 +56,7 @@ All colours are CSS variables in `src/web/src/index.css`, with a light and a dar
 
 ```
 ┌──────────────────────────────────────────────────────────────────────────┐
-│ ▣ Threat Intel Engine   Datasets  Overview  Network  Brief    [dataset ▾]  ● IBM Bob │  header
+│ ▣ Social-Threat Intel Engine  Datasets Overview Network Brief  [dataset ▾] ● IBM Bob ☾ │  header
 ├──────────────────────────────────────────────────────────────────────────┤
 │ Page title + one-line context                         [primary action]  │
 │                                                                          │

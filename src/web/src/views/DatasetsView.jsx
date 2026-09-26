@@ -109,14 +109,22 @@ function UploadCard({ onUpload, className }) {
       {uploading && <p className="text-xs text-muted mt-2">Large files (100 MB) take up to a minute to read.</p>}
       {error && <p className="text-sm text-urgent mt-2">{error}</p>}
 
-      <div className="text-xs text-muted mt-4 space-y-1">
-        <p className="font-medium text-ink">Accepted formats</p>
-        <ul className="list-disc pl-4 space-y-0.5">
-          <li>Scenario CSV (post_id, account_id, username, created_at, text, …)</li>
-          <li>FiveThirtyEight IRA tweets CSV</li>
-          <li>X/Twitter information-operations archive CSV</li>
-          <li>JSON array of posts in the scenario format</li>
+      <div className="text-xs text-muted mt-4 space-y-2">
+        <p className="font-medium text-ink">Each row is one post and needs</p>
+        <ul className="space-y-0.5">
+          <li><span className="font-mono text-ink">account</span> who posted it (account_id, user_id, author…)</li>
+          <li><span className="font-mono text-ink">time</span> when (created_at, timestamp, date…; ISO or Unix time)</li>
+          <li><span className="font-mono text-ink">text</span> what it says (text, content, message…)</li>
         </ul>
+        <p>
+          Optional, and each one improves detection: post ID, links, hashtags, reply-to, repost-of, account creation date.
+          No cleaning needed. X/Twitter information-operations archives and the FiveThirtyEight IRA tweets are read as they are.
+          Text-only datasets (no account or time) can't be analysed.
+        </p>
+        <p>
+          <a href="/posts-template.csv" download className="text-accent hover:underline">Download the template CSV</a>
+          <span className="text-faint"> · full guide in docs/data-format.md</span>
+        </p>
       </div>
     </Card>
   )

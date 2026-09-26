@@ -144,6 +144,14 @@ Open **http://localhost:5173** — changes reload instantly and `/api` calls are
 
 ---
 
+## Using Your Own Data
+
+Upload a CSV or JSON on the **Datasets** page. Each row is one post and needs three things: the account that posted it, the time, and the text. Column names are recognised automatically (`user_id`, `author`, `timestamp`, `content`, …), no cleaning is needed, and links and hashtags are taken from the text when there is no column for them. Full list of accepted columns and time formats: [`data-format.md`](data-format.md). Template: `src/web/public/posts-template.csv`.
+
+Text-only datasets (for example CONSTRAINT or HASOC) have no account or time and are rejected with a message saying what is missing.
+
+---
+
 ## Using the Bob Investigation Console (MCP)
 
 After a dataset has been analysed in the web app:
@@ -175,7 +183,7 @@ The engine test generates the demo scenario and checks that all planted campaign
 | Missing dependencies | Activate `.venv` and run `python -m pip install -r src/requirements.txt` |
 | Python version error | Ensure Python 3.10+ is installed and active in your terminal |
 | `Bob API key is required` | Set `BOB_API_KEY` in `src/.env` and restart the app |
-| "Bob not configured" banner in the app | Same as above — the app is running on cached Bob results |
+| Header says "IBM Bob: saved results only" | Live assessments need both `BOB_API_KEY` in `src/.env` and Bob Shell on the backend's PATH (`bob --version`); until then saved results are shown |
 | Bob warns about system certificates | Update Node.js to v24 (`winget install OpenJS.NodeJS.LTS` on Windows) |
 | `bob` not found | Reinstall Bob Shell and open a new terminal so `PATH` is refreshed |
 | `/mcp` does not show `threat-intel` | Start `bob chat` from the repository root so `.bob/mcp.json` is picked up |

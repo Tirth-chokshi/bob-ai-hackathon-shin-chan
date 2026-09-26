@@ -489,7 +489,7 @@ data/runs/<dataset_id>/
 | `GET /api/datasets/{id}/campaigns/{cid}` | `Campaign` + `sample_posts` |
 | `POST /api/datasets/{id}/campaigns/{cid}/classify` | `{verdict: BobVerdict (legal IDs enriched with title + IPC), escalation: {level, actions}, cached: bool, cost}` |
 | `GET /api/datasets/{id}/brief` | full printable HTML page (calls Bob once for the executive summary, then cached) |
-| `GET /api/status` | `{bob_configured: bool}` — frontend shows a "Bob not configured" banner if false |
+| `GET /api/status` | `{bob_configured: bool}` — true only when `BOB_API_KEY` is set and the Bob Shell CLI is found; the header shows "IBM Bob ready" or "saved results only" |
 
 ---
 

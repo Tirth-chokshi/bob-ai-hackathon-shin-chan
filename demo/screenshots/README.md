@@ -1,6 +1,6 @@
 # Screenshots
 
-The Command Center running on the bundled demo dataset (light theme). Design language: [`docs/design-system.md`](../../docs/design-system.md).
+The Command Center running on the bundled demo dataset (light theme; the header button switches to dark). Design language: [`docs/design-system.md`](../../docs/design-system.md).
 
 ---
 

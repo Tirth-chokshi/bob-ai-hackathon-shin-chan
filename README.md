@@ -145,6 +145,8 @@ python src/main.py
 ```
 Open **http://127.0.0.1:8000** in your browser. The pre-analysed demo dataset loads immediately with the coordination graph, activity timeline, explainable CIB scores and cached IBM Bob verdicts, so it works without an API key.
 
+To analyse your own posts, upload a CSV with the account, time and text of each post on the **Datasets** page; see [`docs/data-format.md`](docs/data-format.md).
+
 ---
 
 ## 🔍 IBM Bob Chat & MCP Investigation Console

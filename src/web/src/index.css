@@ -46,6 +46,8 @@
   color-scheme: light;
 }
 
+/* Dark values live only here: index.html sets data-theme before first paint
+   (saved choice, else the OS setting) and the header toggle switches it */
 :root[data-theme="dark"],
 :root.dark {
   --bg: #0d1015;
@@ -66,29 +68,6 @@
   --benign: #7fd69a;
   --benign-soft: #15301f;
   color-scheme: dark;
-}
-
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]):not(.light) {
-    --bg: #0d1015;
-    --surface: #151a21;
-    --subtle: #1c222b;
-    --line: #29303b;
-    --ink: #e7e9ec;
-    --muted: #9aa3ae;
-    --faint: #687180;
-    --accent: #7ea3ff;
-    --accent-ink: #0d1015;
-    --urgent: #ff7b82;
-    --urgent-soft: #3a1a1e;
-    --alert: #f2b65a;
-    --alert-soft: #372913;
-    --monitor: #9cc3e6;
-    --monitor-soft: #182838;
-    --benign: #7fd69a;
-    --benign-soft: #15301f;
-    color-scheme: dark;
-  }
 }
 
 body {

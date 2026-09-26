@@ -36,7 +36,7 @@ function readHash() {
     .replace(/^#\/?/, "")
     .split("/");
   return {
-    view: VIEWS.some((v) => v.id === view) ? view : "datasets",
+    view: VIEWS.some((v) => v.id === view) ? view : "overview", // open on results; judges see value at once
     datasetId: datasetId || "demo",
     campaignId: campaignId || null,
   };
