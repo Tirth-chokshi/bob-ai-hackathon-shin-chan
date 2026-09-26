@@ -6,7 +6,7 @@ The **Social Media Threat Intelligence Engine** is an open-source intelligence (
 
 It automates the discovery of **Coordinated Inauthentic Behavior (CIB)** in a batch of social media posts, separates engineered campaigns from organic outrage, classifies the threat (Incitement, Targeted Harassment, Organized Misinformation, or Benign Coordination), and packages the evidence into a time-stamped **Police Threat Escalation Brief** with suggested **Bharatiya Nyaya Sanhita (BNS) 2023** and **Information Technology Act 2000** sections for legal review.
 
-It integrates with **IBM Bob** in two ways: Bob is the threat classifier and brief writer behind the web app, and through our **Model Context Protocol (MCP)** server an investigating officer can question the data in natural language from Bob chat.
+It integrates with **IBM Bob** in two ways: behind the web app, Bob (called headless with our Bob API key) classifies each campaign and writes the brief's executive summary; and through our **Model Context Protocol (MCP)** server an investigating officer can question the data in natural language from Bob chat.
 
 The core idea is **behaviour first, content second**: we first find accounts that act together, then read what they are saying.
 
@@ -45,23 +45,26 @@ The core idea is **behaviour first, content second**: we first find accounts tha
 2. **Coordination Detection:** For every pair of accounts, counts how often they performed the same action within a short time window (60 seconds by default). A minimum edge weight of 2 filters out one-off coincidences. Output is an account-to-account graph.
 3. **Campaign Discovery:** Merges all coordination types into one weighted graph, drops weak edges, and runs community detection. Each community of 5+ accounts becomes a candidate campaign.
 4. **Explainable CIB Scoring:** Each campaign gets a 0–100 score from transparent features — median seconds between coordinated posts, share of near-duplicate posts, number of coordination types, median account age, peak posts per minute, and hashtag/URL concentration. Each feature's contribution is stored so the UI can show *why* a campaign was flagged.
-5. **IBM Bob Threat Analysis:** For each top campaign, the backend sends Bob the campaign statistics and representative posts. Bob returns structured JSON:
+5. **IBM Bob Threat Analysis:** For each top campaign, the backend runs IBM Bob headless (`bob run --format json`, authenticated with our Bob API key, prompt sent through stdin) with the campaign statistics, ~10 representative posts, and our rule files (legal table, escalation rules, no-profiling rule). Bob returns structured JSON:
      - `INCITEMENT`: calls for mobilization, violence, or arson.
      - `ORGANIZED_MISINFORMATION`: fabricated claims pushed by the network.
      - `TARGETED_HARASSMENT`: coordinated abuse of a person or group.
      - `BENIGN_COORDINATION`: fan clubs, news sharing, organic protest organizing — coordination that is not a threat.
 
-   Every post ID Bob cites is checked in code against the campaign; unverified output is flagged.
-6. **Legal Suggestions (for verification):**
+   Every post ID Bob cites is checked in code against the campaign; output that fails validation twice is marked unverified. Results are cached, so each campaign is analysed once.
+6. **Legal Suggestions (for verification):** Bob may only choose from a fixed, checked table of sections, by ID; any other section is dropped in code. In testing, free-form answers included over-serious or misdescribed sections, which is why the table is fixed.
      - **BNS 196 (IPC 153A):** Promoting enmity between groups.
      - **BNS 197 (IPC 153B):** Imputations prejudicial to national integration.
      - **BNS 351 (IPC 506):** Criminal intimidation.
      - **BNS 353 (IPC 505):** Statements conducing to public mischief.
-     - **BNS 356 (IPC 499):** Defamation.
+     - **BNS 356 (IPC 499/500):** Defamation.
      - **BNS 79 (IPC 509):** Insulting the modesty of a woman.
+     - **BNS 61 (IPC 120A/B):** Criminal conspiracy.
      - **IT Act 66D:** Cheating by personation using a computer resource (impersonation accounts).
-     - **IT Act 69A:** Blocking of public access to information in the interest of public order.
-7. **Escalation & Brief:** Deterministic rules set the escalation level (e.g., incitement plus a real-world call to action → URGENT), Bob explains it, and the engine renders a time-stamped brief for the SHO / District Cyber Cell with the timeline, campaign table, evidence list with SHA-256 hashes, legal suggestions, recommended actions, and limitations.
+     - **IT Act 67:** Publishing obscene material in electronic form.
+
+   Procedural references used in escalation and the brief (not offences): **IT Act 69A** (blocking, Central Government power), **BNSS 163** (preventive orders), **BSA 63** (electronic-record certificate).
+7. **Escalation & Brief:** Deterministic rules set the escalation level (e.g., incitement plus a real-world call to action → URGENT). The engine renders a time-stamped brief for the SHO / District Cyber Cell with the timeline, campaign table, evidence list with SHA-256 hashes, legal suggestions, recommended actions, and limitations. Bob writes only the executive summary; every other section is filled from stored, verified data.
 
 ---
 
@@ -74,6 +77,8 @@ The core idea is **behaviour first, content second**: we first find accounts tha
 | **Multi-signal, explainable score** | Single metrics (like post count) give false positives during breaking news. Combining signals — and showing each one — lets an officer check the reasoning. |
 | **Benign coordination as a class** | Fan groups and news sharing also coordinate. Explicitly recognising them reduces false alarms. |
 | **Bob for semantics, rules for escalation** | Bob handles language understanding; escalation levels come from fixed rules so the decision is predictable and auditable. |
+| **Fixed legal table, validated in code** | Keeps legal suggestions within sections we have checked; one Markdown file is used by Bob chat, embedded in `bob run` prompts, and parsed by the validator. |
+| **Official `bob run` path** | Documented, works with an API key, and cheap (~0.025 Bobcoins and ~11 s per campaign in our test). Prompts go through stdin, which is reliable on Windows. |
 | **Dual BNS 2023 & IPC references** | BNS replaced the IPC in July 2024; officers and prosecutors still cross-reference both. |
 | **Cached Bob results** | Classifications are cached per campaign, so re-opening a case costs nothing and the demo works offline once analysed. |
 
@@ -81,8 +86,16 @@ The core idea is **behaviour first, content second**: we first find accounts tha
 
 ## IBM Technologies Used
 
-### IBM Bob
-- **Threat classifier and brief writer:** The backend calls Bob headless (`bob run --format json`) with our custom `osint-analyst` mode to classify campaigns and draft briefs.
-- **MCP investigation console:** Our MCP server exposes tools such as `list_campaigns`, `get_campaign`, `get_posts`, and `timeline`. An officer chatting with Bob can ask *"Which accounts started the rumour in campaign 2?"* and Bob gathers the evidence itself.
-- **Custom mode, rules and skills:** The repository's `.bob/` folder holds the `osint-analyst` mode, rules (legal reference table, escalation matrix, no-profiling rule), and a `threat-brief` skill.
-- **AI coding partner:** Bob was used to plan and build the project.
+### IBM Bob — where it is used
+
+| # | Where | How | Credential |
+|---|---|---|---|
+| 1 | **Campaign threat analysis** | Backend runs `bob run --format json` (prompt via stdin) for each flagged campaign; output validated, cached | Bob API key (`BOB_API_KEY` in `src/.env`) |
+| 2 | **Brief executive summary** | One `bob run` call per brief | Bob API key |
+| 3 | **MCP investigation console** | Officer runs `bob chat` in the repo; Bob calls our read-only MCP tools (`list_campaigns`, `get_campaign`, `get_posts`, `timeline`, `account_profile`) and answers with cited post IDs | IBMid sign-in |
+| 4 | **Repo configuration** | `.bob/` holds the `osint-analyst` mode, rules (legal table, escalation matrix, no-profiling), the `threat-brief` skill, and `mcp.json` | — |
+| 5 | **AI coding partner** | Bob Plan → Agent mode used to plan and build the project | IBMid sign-in |
+
+Example console question: *"Which accounts started the rumour in campaign 2, and how fast did it spread?"*
+
+No other AI service or API is used — no watsonx, no social media APIs, no cloud accounts.

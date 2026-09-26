@@ -18,9 +18,12 @@ graph TD
     end
 
     subgraph Intelligence_Core ["3. Analysis & Escalation"]
-        E --> G[IBM Bob threat analysis via bob run]
-        G -->|Threat type, severity, evidence IDs| H[Evidence check + legal suggestions]
+        R[.bob rules: legal table, escalation, no-profiling] --> G
+        E --> G[IBM Bob threat analysis: bob run, prompt via stdin, API key]
+        G -->|Threat type, severity, legal IDs, evidence IDs| H[Validation: schema, evidence IDs, legal-table whitelist]
         H --> I[Escalation rules + Threat Brief generator]
+        I -->|verified verdicts| S[IBM Bob executive summary: bob run]
+        S --> I
     end
 
     subgraph Integration_Layer ["4. Officer Interfaces"]
@@ -41,10 +44,11 @@ graph TD
 | **API Server** | FastAPI / Uvicorn (Python 3.10+) | Endpoints for dataset upload, analysis, campaigns, graph data, Bob classification, and brief export; serves the static frontend. |
 | **Coordination Detection** | coordination-network-toolkit (QUT, MIT) + SQLite | Builds account-to-account coordination networks within configurable time windows. |
 | **Campaign Discovery & Scoring** | NetworkX, Python | Community detection on the merged graph; explainable per-feature CIB score. |
-| **Threat Analysis** | IBM Bob (`bob run --mode osint-analyst --format json`) | Classifies each campaign, extracts target and narrative, suggests legal sections, cites evidence post IDs. Results cached in SQLite. |
-| **Legal Reference & Escalation** | Python rule tables | BNS 2023 / IPC / IT Act reference table and deterministic escalation matrix (MONITOR / ALERT / URGENT). |
-| **IBM Bob MCP Server** | Python MCP SDK | Exposes `list_campaigns`, `get_campaign`, `get_posts`, `timeline` so officers can investigate from Bob chat. |
-| **Command Center UI** | HTML, CSS, JavaScript, Cytoscape.js, Chart.js | Upload, overview dashboard, posts-per-minute timeline, network graph coloured by campaign, "why flagged" panel, brief preview. |
+| **Threat Analysis** | IBM Bob headless (`bob run --format json`), `BOB_API_KEY`, prompt via stdin | Classifies each campaign, extracts target and narrative, chooses legal-table IDs, cites evidence post IDs. Validated with Pydantic and cached as JSON (~0.025 Bobcoins, ~11 s per campaign in testing). |
+| **Legal Reference & Escalation** | `.bob/rules-osint-analyst/01-legal-table.md` + Python rules | One legal table (with IDs) used by Bob chat, embedded in prompts, and parsed to validate Bob's answers; deterministic escalation matrix (MONITOR / ALERT / URGENT). |
+| **Brief Summary** | IBM Bob headless (`bob run`) | Writes the brief's executive summary from verified verdicts only; cached per dataset. |
+| **IBM Bob MCP Server** | Python MCP SDK (FastMCP), registered in `.bob/mcp.json` | Read-only tools `list_campaigns`, `get_campaign`, `get_posts`, `timeline`, `account_profile` so officers can investigate from Bob chat (IBMid sign-in). |
+| **Command Center UI** | React 19 + Vite, Tailwind CSS, react-cytoscapejs (Cytoscape.js), Recharts | Upload, overview dashboard, posts-per-minute timeline, network graph coloured by campaign, "why flagged" panel, Bob verdict card, brief preview. Built to static files (`src/web/dist/`) and served by FastAPI. |
 | **Threat Brief** | Markdown/HTML + print CSS | Time-stamped brief with SHA-256 hashes, timeline, evidence table, legal suggestions, recommended actions. |
 
 ---
@@ -66,12 +70,16 @@ sequenceDiagram
     CIB-->>API: Campaigns with scores and feature breakdown
     API-->>UI: Campaign list, timeline and graph data
     Officer->>UI: Clicks "Ask Bob" on a campaign
-    UI->>API: POST /api/campaigns/{id}/classify
-    API->>Bob: bob run (campaign stats + representative posts)
-    Bob-->>API: JSON: threat type, severity, legal suggestions, evidence IDs
-    API->>API: Verify evidence IDs, apply escalation rules, cache result
+    UI->>API: POST /api/datasets/{id}/campaigns/{cid}/classify
+    API->>Bob: bob run --format json (stdin: rules + schema + stats + posts)
+    Bob-->>API: JSON: threat type, severity, legal-table IDs, evidence IDs
+    API->>API: Validate schema, drop unknown legal IDs and foreign post IDs, apply escalation rules, cache
     API-->>UI: Classification + escalation level
     Officer->>UI: Clicks "Generate Threat Brief"
+    UI->>API: GET /api/datasets/{id}/brief
+    API->>Bob: bob run (verified verdicts → executive summary)
+    Bob-->>API: Summary text (cached)
+    API-->>UI: Brief HTML
     UI->>Officer: Print-ready, time-stamped brief
 
     opt Investigation from Bob chat
@@ -85,11 +93,12 @@ sequenceDiagram
 
 ## Security Considerations
 
-1. **Offline core:** Coordination detection, scoring, and legal/escalation rules run locally without cloud calls; only the Bob analysis step needs a connection, and its results are cached.
-2. **Credential handling:** Keys (e.g., `BOB_API_KEY`) are read only from environment variables; `.env` is excluded by `.gitignore`.
-3. **Evidence integrity:** Every input batch and evidence post is hashed with SHA-256 and the hashes are printed in the brief, supporting a tamper-evident record for a Section 63 Bharatiya Sakshya Adhiniyam (BSA) 2023 electronic-evidence certificate.
-4. **No profiling:** Classification is based on behaviour and content; rules instruct Bob never to infer or label people by religion, caste, or community.
-5. **Mock data:** The demo uses fictional places and groups only.
+1. **Offline core:** Coordination detection, scoring, and legal/escalation rules run locally without cloud calls; only the Bob steps need a connection, and their results are cached. Without a key the app still runs and serves cached verdicts.
+2. **Credential handling:** The only secret is the Bob API key (`BOB_API_KEY`), read from `src/.env`, which is excluded by `.gitignore`. We use Inference-type keys (inference only), one per developer, and check `git grep -E "bob_prod_[A-Za-z0-9_-]{30,}"` before every push. Bob chat uses the officer's own IBMid sign-in.
+3. **Bounded AI output:** Bob's answers are schema-validated; cited post IDs must belong to the campaign and legal sections must come from our fixed table, so Bob cannot introduce evidence or sections we have not checked. `bob run` executes in an empty working folder, so it cannot read or change project files.
+4. **Evidence integrity:** Every input batch and evidence post is hashed with SHA-256 and the hashes are printed in the brief, supporting a tamper-evident record for a Section 63 Bharatiya Sakshya Adhiniyam (BSA) 2023 electronic-evidence certificate.
+5. **No profiling:** Classification is based on behaviour and content; rules instruct Bob never to infer or label people by religion, caste, or community.
+6. **Mock data:** The demo uses fictional places and groups only.
 
 ---
 

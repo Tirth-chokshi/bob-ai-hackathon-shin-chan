@@ -42,10 +42,10 @@ submission:
 
   tech_stack:
     languages: ["Python", "JavaScript"]
-    frameworks: ["FastAPI", "Uvicorn", "Pydantic", "NetworkX", "coordination-network-toolkit"]
+    frameworks: ["FastAPI", "Uvicorn", "Pydantic", "NetworkX", "coordination-network-toolkit", "React", "Vite"]
     ibm_technologies: ["IBM Bob", "IBM Bob MCP integration"]
     databases: ["SQLite"]
-    other: ["HTML5", "CSS", "Cytoscape.js", "Chart.js", "GitHub Actions"]
+    other: ["Tailwind CSS", "Cytoscape.js (react-cytoscapejs)", "Recharts", "GitHub Actions"]
 
   what_we_are_most_proud_of: >         # Optional but recommended — guides judges to your best work
     Behaviour-first detection: the engine flags coordinated campaigns even when each individual post looks harmless, and

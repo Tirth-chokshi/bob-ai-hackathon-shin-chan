@@ -1,6 +1,6 @@
 # Setup Guide: Social Media Threat Intelligence Engine
 
-> **This setup guide contains complete instructions to set up and run the template locally.**
+> Complete instructions to set up and run the project locally on Windows, macOS or Linux.
 
 ---
 
@@ -11,7 +11,20 @@ Before you begin, ensure you have the following installed on your machine:
 - **Python 3.10+**
 - **pip** (Python package manager)
 - **Git**
-- **IBM Bob Shell** (needs Node.js 24+) — install from [bob.ibm.com/download](https://bob.ibm.com/download) and sign in, or set `BOB_API_KEY`
+- **Node.js 24+** with npm (required by IBM Bob Shell and to build the React frontend)
+- **IBM Bob Shell** — install from [bob.ibm.com/download](https://bob.ibm.com/download), then run `bob` once and sign in with your IBMid
+- **An IBM Bob API key** — needed for live Bob analysis (see below)
+
+### Getting an IBM Bob API key
+
+1. Sign in at [bob.ibm.com](https://bob.ibm.com) and open your subscription instance.
+2. Go to **API keys** → **Create**. Choose the **Inference** type (it can only run inference, so it is the safer choice).
+3. Copy the key immediately — it is shown only once.
+4. Put it in `src/.env` as `BOB_API_KEY=...` (next section).
+
+Headless `bob run` requires a key even when Bob Shell is signed in. Never commit the key or paste it into chats; `src/.env` is already in `.gitignore`.
+
+**No key?** The app still runs: detection, scoring, the network graph and escalation work, and Bob's results are shown from the cache for the bundled demo run. Only new Bob analysis needs a key.
 
 ---
 
@@ -23,10 +36,12 @@ Copy the template environment file to `.env`:
 cp src/.env.example src/.env
 ```
 
+On Windows (PowerShell): `Copy-Item src/.env.example src/.env`
+
 | Variable | Description | Required |
 |---|---|---|
-| `BOB_API_KEY` | IBM Bob Inference API key for headless `bob run` | Only if Bob Shell is not signed in |
-| `BOB_MAX_COST` | Bobcoin cap per classification call | Optional (Default: 0.50) |
+| `BOB_API_KEY` | IBM Bob API key for headless `bob run` (threat analysis and brief summary) | Yes for live Bob analysis; without it the app uses cached verdicts |
+| `BOB_MAX_COST` | Bobcoin cap per Bob call | Optional (Default: 0.25; one call measured at ~0.025) |
 | `APP_PORT` | Application server port | Optional (Default: 8000) |
 | `APP_HOST` | Bind address | Optional (Default: 127.0.0.1) |
 | `APP_ENV` | Application environment (`development` / `production`) | Optional |
@@ -47,11 +62,11 @@ cd bob-ai-hackathon-shin-chan
 
 ### 2. Configure Environment
 
-```bash
-cp src/.env.example src/.env
-```
+Copy `src/.env.example` to `src/.env` (see above) and add your `BOB_API_KEY`.
 
 ### 3. Install Dependencies
+
+**macOS / Linux:**
 
 ```bash
 python3 -m venv .venv
@@ -60,14 +75,95 @@ python -m pip install --upgrade pip
 python -m pip install -r src/requirements.txt
 ```
 
+**Windows (PowerShell):**
+
+```powershell
+python -m venv .venv
+.venv\Scripts\Activate.ps1
+python -m pip install --upgrade pip
+python -m pip install -r src/requirements.txt
+```
+
+### 4. Build the Frontend (React)
+
+```bash
+cd src/web
+npm ci
+npm run build
+cd ../..
+```
+
+This creates `src/web/dist/`, which the Python app serves. Re-run `npm run build` after pulling frontend changes.
+
+### 5. Check IBM Bob
+
+```bash
+bob --version
+```
+
+Should print `2.0.x` or later. A warning about system certificates means Node.js is older than 24.
+
 ---
 
 ## Running the Application
+
+**macOS / Linux:**
 
 ```bash
 source .venv/bin/activate
 python src/main.py
 ```
+
+**Windows (PowerShell):**
+
+```powershell
+.venv\Scripts\Activate.ps1
+python src/main.py
+```
+
+Open **http://127.0.0.1:8000** in your browser.
+
+### Frontend development mode (for contributors)
+
+Run the Python app as above, then in a second terminal:
+
+```bash
+cd src/web
+npm run dev
+```
+
+Open **http://localhost:5173** — changes reload instantly and `/api` calls are proxied to the Python app on port 8000. To work on the UI without the backend, create `src/web/.env.local` with `VITE_USE_MOCK=true`.
+
+### Verify it works
+
+1. **Upload** tab → choose the demo dataset → **Analyze**.
+2. **Overview** shows the planted campaigns ranked by CIB score; the cricket decoy ranks lowest.
+3. **Network** → click a campaign → **Ask Bob** returns a threat type, severity, legal suggestions and evidence post IDs (from the cache if no key is set).
+4. **Brief** → **Open printable brief** → the page's **Print** button produces the time-stamped threat brief as PDF.
+
+---
+
+## Using the Bob Investigation Console (MCP)
+
+After a dataset has been analysed in the web app:
+
+1. Open a terminal in the repository root.
+2. Run `bob chat` (signed in with your IBMid).
+3. Switch mode: `/mode osint-analyst`.
+4. Check the tools: `/mcp` should list the `threat-intel` server (configured in `.bob/mcp.json`).
+5. Ask, for example: *"List the campaigns in the demo dataset and tell me which accounts started campaign 1."*
+
+The MCP server is read-only: it can only read analysis results from `data/runs/`.
+
+---
+
+## Running the Tests
+
+```bash
+python -m pytest src/tests
+```
+
+The engine test generates the demo scenario and checks that all planted campaigns are detected and the decoy ranks lowest.
 
 ---
 
@@ -77,3 +173,11 @@ python src/main.py
 |---|---|
 | Missing dependencies | Activate `.venv` and run `python -m pip install -r src/requirements.txt` |
 | Python version error | Ensure Python 3.10+ is installed and active in your terminal |
+| `Bob API key is required` | Set `BOB_API_KEY` in `src/.env` and restart the app |
+| "Bob not configured" banner in the app | Same as above — the app is running on cached Bob results |
+| Bob warns about system certificates | Update Node.js to v24 (`winget install OpenJS.NodeJS.LTS` on Windows) |
+| `bob` not found | Reinstall Bob Shell and open a new terminal so `PATH` is refreshed |
+| `/mcp` does not show `threat-intel` | Start `bob chat` from the repository root so `.bob/mcp.json` is picked up |
+| PowerShell blocks `Activate.ps1` | Run `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned` once |
+| Browser shows "Frontend not built" or a blank page | Run `npm ci && npm run build` in `src/web`, then restart the app |
+| `npm ci` fails | Check `node --version` is 24+; delete `src/web/node_modules` and retry |

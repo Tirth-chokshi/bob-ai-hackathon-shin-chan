@@ -48,7 +48,7 @@ The **Social Media Threat Intelligence Engine** ingests a batch of social media 
 | **Languages** | Python 3.10+, JavaScript, HTML5, CSS3 |
 | **Backend** | FastAPI, Uvicorn, Pydantic |
 | **Analysis** | [coordination-network-toolkit](https://github.com/QUT-Digital-Observatory/coordination-network-toolkit) (QUT Digital Observatory, MIT), NetworkX |
-| **Frontend** | Vanilla HTML/CSS/JS, Cytoscape.js (network graph), Chart.js (timeline) |
+| **Frontend** | React 19 + Vite, Tailwind CSS, react-cytoscapejs (network graph), Recharts (timeline) |
 | **IBM Technologies** | IBM Bob (threat classifier via `bob run`, MCP investigation console, custom mode & skills, AI coding partner) |
 | **Database** | SQLite |
 | **Other** | GitHub Actions |
@@ -90,16 +90,19 @@ The **Social Media Threat Intelligence Engine** ingests a batch of social media 
 git clone https://github.com/Tirth-chokshi/bob-ai-hackathon-shin-chan.git
 cd bob-ai-hackathon-shin-chan
 
-# 2. Configure environment
+# 2. Configure environment (add your IBM Bob API key to src/.env)
 cp src/.env.example src/.env
 
 # 3. Create a virtual environment and install dependencies
 python3 -m venv .venv
-source .venv/bin/activate
+source .venv/bin/activate          # Windows: .venv\Scripts\Activate.ps1
 python -m pip install --upgrade pip
 python -m pip install -r src/requirements.txt
 
-# 4. Run the project
+# 4. Build the React frontend
+cd src/web && npm ci && npm run build && cd ../..
+
+# 5. Run the project, then open http://127.0.0.1:8000
 python src/main.py
 ```
 
