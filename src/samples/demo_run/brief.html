@@ -1,0 +1,542 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Cyber Threat Intelligence Escalation Brief — demo</title>
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      margin: 0;
+      padding: 32px;
+      color: #1f2937;
+      background: #f9fafb;
+      line-height: 1.5;
+    }
+    .container {
+      max-width: 960px;
+      margin: 0 auto;
+      background: #ffffff;
+      padding: 40px;
+      border-radius: 12px;
+      box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
+    }
+    .header {
+      border-bottom: 2px solid #e5e7eb;
+      padding-bottom: 24px;
+      margin-bottom: 28px;
+    }
+    .title-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    h1 {
+      font-size: 24px;
+      font-weight: 700;
+      color: #111827;
+      margin: 0 0 8px 0;
+    }
+    .meta-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 8px;
+      font-size: 13px;
+      color: #4b5563;
+      margin-top: 16px;
+    }
+    .exec-summary {
+      background: #f0fdf4;
+      border-left: 4px solid #16a34a;
+      padding: 16px 20px;
+      border-radius: 6px;
+      margin-bottom: 32px;
+    }
+    .exec-summary h2 {
+      font-size: 16px;
+      margin: 0 0 8px 0;
+      color: #166534;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+    .campaign-card {
+      border: 1px solid #e5e7eb;
+      border-radius: 10px;
+      padding: 24px;
+      margin-bottom: 32px;
+      page-break-inside: avoid;
+    }
+    .campaign-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 16px;
+    }
+    .campaign-title {
+      font-size: 18px;
+      font-weight: 700;
+      color: #111827;
+      margin-right: 12px;
+    }
+    .hashtag {
+      background: #eff6ff;
+      color: #1d4ed8;
+      padding: 3px 8px;
+      border-radius: 4px;
+      font-size: 13px;
+      font-weight: 600;
+      margin-right: 8px;
+    }
+    .accounts-badge {
+      background: #f3f4f6;
+      color: #4b5563;
+      padding: 3px 8px;
+      border-radius: 4px;
+      font-size: 12px;
+    }
+    .score-badge {
+      font-weight: 700;
+      font-size: 13px;
+      padding: 6px 14px;
+      border-radius: 20px;
+    }
+    .section-title {
+      font-size: 13px;
+      font-weight: 700;
+      color: #374151;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      margin: 18px 0 8px 0;
+    }
+    .features-grid {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-bottom: 12px;
+    }
+    .feat-pill {
+      background: #f9fafb;
+      border: 1px solid #e5e7eb;
+      padding: 4px 10px;
+      border-radius: 6px;
+      font-size: 12px;
+    }
+    .legal-badge {
+      background: #fdf2f8;
+      border: 1px solid #fbcfe8;
+      color: #9d174d;
+      padding: 8px 12px;
+      border-radius: 6px;
+      font-size: 13px;
+      margin-bottom: 6px;
+    }
+    .cta-alert {
+      background: #fef2f2;
+      color: #991b1b;
+      border: 1px solid #fecaca;
+      padding: 8px 12px;
+      border-radius: 6px;
+      font-size: 13px;
+    }
+    .evidence-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 12px;
+      margin-top: 8px;
+    }
+    .evidence-table th, .evidence-table td {
+      border: 1px solid #e5e7eb;
+      padding: 8px 10px;
+      text-align: left;
+    }
+    .evidence-table th {
+      background: #f9fafb;
+      color: #374151;
+      font-weight: 600;
+    }
+    .mono {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      font-size: 11px;
+    }
+    .small-hash {
+      color: #6b7280;
+    }
+    .actions-list {
+      margin: 4px 0 12px 20px;
+      padding: 0;
+      font-size: 13px;
+    }
+    .actions-list li {
+      margin-bottom: 4px;
+    }
+    .print-btn {
+      background: #2563eb;
+      color: white;
+      border: none;
+      padding: 8px 18px;
+      border-radius: 6px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    .print-btn:hover {
+      background: #1d4ed8;
+    }
+    .limitations {
+      margin-top: 40px;
+      border-top: 1px solid #e5e7eb;
+      padding-top: 16px;
+      font-size: 11px;
+      color: #6b7280;
+    }
+    @media print {
+      body {
+        background: white;
+        padding: 0;
+      }
+      .container {
+        box-shadow: none;
+        padding: 0;
+      }
+      .print-btn {
+        display: none;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <div class="title-row">
+        <div>
+          <h1>POLICE CYBER CELL · THREAT INTELLIGENCE ESCALATION BRIEF</h1>
+          <div style="font-size: 14px; color: #4b5563;">State Police Cyber Command & Forensics Division</div>
+        </div>
+        <button class="print-btn" onclick="window.print()">Print / Save PDF</button>
+      </div>
+
+      <div class="meta-grid">
+        <div><strong>Dataset Reference:</strong> demo</div>
+        <div><strong>Generated Timestamp:</strong> 26 September 2026, 14:37:11 IST</div>
+        <div><strong>Evidence SHA-256:</strong> <span class="mono">feef29ddd46cef628d9c...</span></div>
+        <div><strong>Compliance Standard:</strong> Bharatiya Sakshya Adhiniyam (BSA) Section 63</div>
+      </div>
+    </div>
+
+    <div class="exec-summary">
+      <h2>Executive Summary for Station House Officer (SHO)</h2>
+      <p style="margin: 0; font-size: 14px; color: #14532d;">URGENT — Campaign #SundarpurExposed (score 92/100, 25 accounts) is the highest-priority threat: a coordinated organised misinformation operation targeting Sundarpur dam authorities and mainstream media, framed as an infrastructure safety cover-up, with a severity rating of 4/5. Campaigns #SundarpurAlert (score 89/100, 40 accounts) and #FakeNewsExposed (score 88/100, 30 accounts) are pending classification but score comparably high and warrant immediate review by the district cyber cell. All three campaigns exhibit high coordination scores suggesting inauthentic, non-organic amplification; the cyber cell should preserve post-level evidence and identify originating accounts before content is deleted. No confirmed call to gather, time, or place is present in the current data. Recommended actions: escalate #SundarpurExposed to URGENT, place #SundarpurAlert and #FakeNewsExposed at ALERT pending classification, and initiate account-level attribution. Note: this is automated analysis for decision support only — all findings must be verified by a qualified legal and investigating officer before operational action.</p>
+    </div>
+
+    <div class="campaigns-section">
+      
+        <div class="campaign-card">
+          <div class="campaign-header">
+            <div>
+              <span class="campaign-title">Campaign c1</span>
+              <span class="hashtag">#SundarpurExposed</span>
+              <span class="accounts-badge">25 accounts</span>
+            </div>
+            <div class="score-badge" style="background:#fef2f2; color:#dc2626; border: 1px solid #dc2626;">
+              URGENT · CIB RISK 92/100
+            </div>
+          </div>
+
+          <div class="section-title">Forensic Feature Contribution</div>
+          <div class="features-grid">
+            <div class='feat-pill'><strong>Speed</strong>: 24 pts</div><div class='feat-pill'><strong>Duplication</strong>: 25 pts</div><div class='feat-pill'><strong>Multi signal</strong>: 8 pts</div><div class='feat-pill'><strong>Fresh accounts</strong>: 15 pts</div><div class='feat-pill'><strong>Burst</strong>: 10 pts</div><div class='feat-pill'><strong>Concentration</strong>: 10 pts</div>
+          </div>
+
+          <div class="section-title">Threat Assessment & Target</div>
+          <p><strong>Threat Type:</strong> Organized Misinformation (Severity 4/5)</p>
+          <p><strong>Target:</strong> Sundarpur dam authorities and mainstream media outlets, framed as concealing an infrastructure safety coverup</p>
+          <p><strong>Narrative:</strong> A coordinated network of 25 accounts amplifies near-identical posts linking to an external site claiming to host &#x27;leaked&#x27; dam inspection documents, asserting a media-suppressed coverup of a dam leak in Sundarpur.</p>
+          
+
+          <div class="section-title">Applicable Legal Provisions (For Legal Verification)</div>
+          <div class="legal-container">
+            
+            <div class="legal-badge">
+              <strong>BNS 353</strong> (IPC 505) — 
+              <em>Statements conducing to public mischief (rumours causing fear or alarm)</em>: Coordinated spread of unverified claims about dam safety failure likely to cause public fear and alarm among residents in the affected area.
+            </div>
+            
+            <div class="legal-badge">
+              <strong>BNS 61</strong> (IPC 120A/120B) — 
+              <em>Criminal conspiracy (coordinated action)</em>: 25 accounts acting in concert with co-linked, co-similar-tweet, and co-tweet signals indicate a criminal conspiracy to artificially amplify false narratives.
+            </div>
+            
+          </div>
+
+          <div class="section-title">Operational Response Directives</div>
+          <ul class="actions-list">
+            <li>Notify SHO and district control room</li><li>Preserve evidence (hashes in brief)</li><li>Request platform takedown through the law-enforcement channel (see ITA-69A)</li><li>Consider preventive orders (BNSS-163)</li><li>Issue a public fact-check advisory</li>
+          </ul>
+
+          <div class="section-title">Forensic Evidence Chain (BSA Section 63 Compliant)</div>
+          <table class="evidence-table">
+            <thead>
+              <tr>
+                <th>Post ID</th>
+                <th>Timestamp (IST)</th>
+                <th>Handle</th>
+                <th>Content Text</th>
+                <th>SHA-256 Hash</th>
+              </tr>
+            </thead>
+            <tbody>
+              
+            <tr>
+              <td class="mono">p04269</td>
+              <td>23-Sep 18:16:40</td>
+              <td class="mono">voice_b_2006</td>
+              <td>Exclusive report exposing the truth that mainstream media ignores: http://sundarpur-truth.example/dam-leak-coverup-doc #SundarpurExposed</td>
+              <td class="mono small-hash" title="521754014e915ae76940e04aca634a452fc7523e4431a62098717dd8f78ec767">521754014e915ae7...</td>
+            </tr>
+            
+            <tr>
+              <td class="mono">p04264</td>
+              <td>23-Sep 18:16:42</td>
+              <td class="mono">voice_b_2001</td>
+              <td>Exclusive report exposing the truth that mainstream media ignores: http://sundarpur-truth.example/dam-leak-coverup-doc #SundarpurExposed</td>
+              <td class="mono small-hash" title="b0781a8a46695c70f476b3ce20688e078851d355f1d6707c2b3445df3847c526">b0781a8a46695c70...</td>
+            </tr>
+            
+            <tr>
+              <td class="mono">p04288</td>
+              <td>23-Sep 18:16:42</td>
+              <td class="mono">voice_b_2025</td>
+              <td>Exclusive report exposing the truth that mainstream media ignores: http://sundarpur-truth.example/dam-leak-coverup-doc #SundarpurExposed</td>
+              <td class="mono small-hash" title="e47e658eff0e371ec8e769cce3eac6e2bec6bcb0ab1bbfd9919c9385baf47b6f">e47e658eff0e371e...</td>
+            </tr>
+            
+            <tr>
+              <td class="mono">p04287</td>
+              <td>23-Sep 18:16:43</td>
+              <td class="mono">voice_b_2024</td>
+              <td>Important evidence documents available here: http://sundarpur-truth.example/dam-leak-coverup-doc #SundarpurExposed</td>
+              <td class="mono small-hash" title="94124878faeffaa8e210b79a69ec6becd5d665477386186791c3c806b3fe0f62">94124878faeffaa8...</td>
+            </tr>
+            
+            <tr>
+              <td class="mono">p04276</td>
+              <td>23-Sep 18:16:48</td>
+              <td class="mono">voice_b_2013</td>
+              <td>Read the leaked documents before they get taken down: http://sundarpur-truth.example/dam-leak-coverup-doc #SundarpurExposed</td>
+              <td class="mono small-hash" title="286e59814de9e9d13254ff26a2fcf3f2be1386da83e5b6209ec330aab945c9ec">286e59814de9e9d1...</td>
+            </tr>
+            
+            <tr>
+              <td class="mono">p04275</td>
+              <td>23-Sep 18:16:49</td>
+              <td class="mono">voice_b_2012</td>
+              <td>See the official inspection report leaked online: http://sundarpur-truth.example/dam-leak-coverup-doc #SundarpurExposed</td>
+              <td class="mono small-hash" title="352a76acc3bc53b6600798ef47cdc434dcdf64a6ea16894982b0c66856693a7a">352a76acc3bc53b6...</td>
+            </tr>
+            
+            <tr>
+              <td class="mono">p04272</td>
+              <td>23-Sep 18:16:50</td>
+              <td class="mono">voice_b_2009</td>
+              <td>Read the leaked documents before they get taken down: http://sundarpur-truth.example/dam-leak-coverup-doc #SundarpurExposed</td>
+              <td class="mono small-hash" title="c65800ac62b0d15a3f360b6b79a554cd0f39b374feb04544902784e4b28046a9">c65800ac62b0d15a...</td>
+            </tr>
+            
+            <tr>
+              <td class="mono">p04284</td>
+              <td>23-Sep 18:16:54</td>
+              <td class="mono">voice_b_2021</td>
+              <td>Read the leaked documents before they get taken down: http://sundarpur-truth.example/dam-leak-coverup-doc #SundarpurExposed</td>
+              <td class="mono small-hash" title="ebbc488e73ce923b3bd00c1682f682a50b1f70d5189de050f721597449575a4e">ebbc488e73ce923b...</td>
+            </tr>
+            
+            </tbody>
+          </table>
+        </div>
+        
+        <div class="campaign-card">
+          <div class="campaign-header">
+            <div>
+              <span class="campaign-title">Campaign c2</span>
+              <span class="hashtag">#SundarpurAlert</span>
+              <span class="accounts-badge">40 accounts</span>
+            </div>
+            <div class="score-badge" style="background:#fef2f2; color:#dc2626; border: 1px solid #dc2626;">
+              URGENT · CIB RISK 89/100
+            </div>
+          </div>
+
+          <div class="section-title">Forensic Feature Contribution</div>
+          <div class="features-grid">
+            <div class='feat-pill'><strong>Speed</strong>: 25 pts</div><div class='feat-pill'><strong>Duplication</strong>: 25 pts</div><div class='feat-pill'><strong>Multi signal</strong>: 4 pts</div><div class='feat-pill'><strong>Fresh accounts</strong>: 15 pts</div><div class='feat-pill'><strong>Burst</strong>: 10 pts</div><div class='feat-pill'><strong>Concentration</strong>: 10 pts</div>
+          </div>
+
+          <div class="section-title">Threat Assessment & Target</div>
+          <p><strong>Threat Type:</strong> Organized Misinformation (Severity 4/5)</p>
+          <p><strong>Target:</strong> Under OSINT evaluation</p>
+          <p><strong>Narrative:</strong> Coordinated activity detected across 40 accounts centered on #SundarpurAlert.</p>
+          
+
+          <div class="section-title">Applicable Legal Provisions (For Legal Verification)</div>
+          <div class="legal-container">
+            <p class='muted'>No explicit penal sections flagged. Verify in accordance with state guidelines.</p>
+          </div>
+
+          <div class="section-title">Operational Response Directives</div>
+          <ul class="actions-list">
+            <li>Notify SHO and district control room</li><li>Preserve evidence (hashes in brief)</li><li>Request platform takedown through the law-enforcement channel (see ITA-69A)</li><li>Consider preventive orders (BNSS-163)</li><li>Issue a public fact-check advisory</li>
+          </ul>
+
+          <div class="section-title">Forensic Evidence Chain (BSA Section 63 Compliant)</div>
+          <table class="evidence-table">
+            <thead>
+              <tr>
+                <th>Post ID</th>
+                <th>Timestamp (IST)</th>
+                <th>Handle</th>
+                <th>Content Text</th>
+                <th>SHA-256 Hash</th>
+              </tr>
+            </thead>
+            <tbody>
+              
+            <tr>
+              <td class="mono">p04024</td>
+              <td>23-Sep 14:56:40</td>
+              <td class="mono">alert_a_1001</td>
+              <td>Sundarpur dam gates will be opened TONIGHT itself, whole east side will flood. Officials hiding it!! Everyone gather at Collector office 7 PM!! #SundarpurAlert</td>
+              <td class="mono small-hash" title="4f294cf5eacca2f86304c33efad0fd0c3382698003fbb17f0780975837bff857">4f294cf5eacca2f8...</td>
+            </tr>
+            
+            <tr>
+              <td class="mono">p04064</td>
+              <td>23-Sep 20:56:40</td>
+              <td class="mono">alert_a_1001</td>
+              <td>Urgent alert for Sundarpur east: Dam floodgates opening tonight without public notice! East side will submerge. Assemble at District Collector office 7 PM! #SundarpurAlert</td>
+              <td class="mono small-hash" title="6c7cc2d5fee9cf4188600a9f15fa737c5dc83cba7838815b8997396ff1b444a5">6c7cc2d5fee9cf41...</td>
+            </tr>
+            
+            <tr>
+              <td class="mono">p04104</td>
+              <td>24-Sep 02:56:51</td>
+              <td class="mono">alert_a_1001</td>
+              <td>Warning! Water release from Sundarpur main dam planned tonight! Administration silent. Mass gathering at Collector office 7 PM sharp. #SundarpurAlert</td>
+              <td class="mono small-hash" title="ac1d35177292ee99aa0dbf43b8c2297be3e8252e110416e8ddabaeddaf16253f">ac1d35177292ee99...</td>
+            </tr>
+            
+            <tr>
+              <td class="mono">p04144</td>
+              <td>24-Sep 08:57:07</td>
+              <td class="mono">alert_a_1001</td>
+              <td>Sundarpur dam gates will be opened TONIGHT itself, whole east side will flood. Officials hiding it!! Everyone gather at Collector office 7 PM!! #SundarpurAlert</td>
+              <td class="mono small-hash" title="c8ede99df0dcac84603a8d7ee92b11975b5382355c1195e904ae913a754c8a04">c8ede99df0dcac84...</td>
+            </tr>
+            
+            <tr>
+              <td class="mono">p04184</td>
+              <td>24-Sep 14:56:58</td>
+              <td class="mono">alert_a_1001</td>
+              <td>Urgent alert for Sundarpur east: Dam floodgates opening tonight without public notice! East side will submerge. Assemble at District Collector office 7 PM! #SundarpurAlert</td>
+              <td class="mono small-hash" title="899613a959831f871b4ca61168b10f3d4029fb86e2abb52a6aca560f6f576884">899613a959831f87...</td>
+            </tr>
+            
+            </tbody>
+          </table>
+        </div>
+        
+        <div class="campaign-card">
+          <div class="campaign-header">
+            <div>
+              <span class="campaign-title">Campaign c3</span>
+              <span class="hashtag">#FakeNewsExposed</span>
+              <span class="accounts-badge">30 accounts</span>
+            </div>
+            <div class="score-badge" style="background:#fef2f2; color:#dc2626; border: 1px solid #dc2626;">
+              URGENT · CIB RISK 88/100
+            </div>
+          </div>
+
+          <div class="section-title">Forensic Feature Contribution</div>
+          <div class="features-grid">
+            <div class='feat-pill'><strong>Speed</strong>: 20 pts</div><div class='feat-pill'><strong>Duplication</strong>: 25 pts</div><div class='feat-pill'><strong>Multi signal</strong>: 8 pts</div><div class='feat-pill'><strong>Fresh accounts</strong>: 15 pts</div><div class='feat-pill'><strong>Burst</strong>: 10 pts</div><div class='feat-pill'><strong>Concentration</strong>: 10 pts</div>
+          </div>
+
+          <div class="section-title">Threat Assessment & Target</div>
+          <p><strong>Threat Type:</strong> Organized Misinformation (Severity 4/5)</p>
+          <p><strong>Target:</strong> Under OSINT evaluation</p>
+          <p><strong>Narrative:</strong> Coordinated activity detected across 30 accounts centered on #FakeNewsExposed.</p>
+          
+
+          <div class="section-title">Applicable Legal Provisions (For Legal Verification)</div>
+          <div class="legal-container">
+            <p class='muted'>No explicit penal sections flagged. Verify in accordance with state guidelines.</p>
+          </div>
+
+          <div class="section-title">Operational Response Directives</div>
+          <ul class="actions-list">
+            <li>Notify SHO and district control room</li><li>Preserve evidence (hashes in brief)</li><li>Request platform takedown through the law-enforcement channel (see ITA-69A)</li><li>Consider preventive orders (BNSS-163)</li><li>Issue a public fact-check advisory</li>
+          </ul>
+
+          <div class="section-title">Forensic Evidence Chain (BSA Section 63 Compliant)</div>
+          <table class="evidence-table">
+            <thead>
+              <tr>
+                <th>Post ID</th>
+                <th>Timestamp (IST)</th>
+                <th>Handle</th>
+                <th>Content Text</th>
+                <th>SHA-256 Hash</th>
+              </tr>
+            </thead>
+            <tbody>
+              
+            <tr>
+              <td class="mono">p04389</td>
+              <td>23-Sep 16:55:01</td>
+              <td class="mono">patriot_c_3001</td>
+              <td>@asha_reports Corrupt journalism at its peak. Stop spreading lies and defaming our local officials without proof!</td>
+              <td class="mono small-hash" title="4cfc21d625378dce87e6327dc573261effffd57b678d89ba6410301cd004189b">4cfc21d625378dce...</td>
+            </tr>
+            
+            <tr>
+              <td class="mono">p04419</td>
+              <td>24-Sep 06:53:05</td>
+              <td class="mono">patriot_c_3001</td>
+              <td>@asha_reports Corrupt journalism at its peak. Stop spreading lies and defaming our local officials without proof!</td>
+              <td class="mono small-hash" title="5075f960d8116803ea10cc9709a5dc53e8c1fb58da142ebaadd0918f31411a44">5075f960d8116803...</td>
+            </tr>
+            
+            <tr>
+              <td class="mono">p04449</td>
+              <td>24-Sep 20:53:51</td>
+              <td class="mono">patriot_c_3001</td>
+              <td>@asha_reports Corrupt journalism at its peak. Stop spreading lies and defaming our local officials without proof!</td>
+              <td class="mono small-hash" title="4a325889eaa342e40c56ee1b041a37933bbc056646d7c55ec3a65f40421940db">4a325889eaa342e4...</td>
+            </tr>
+            
+            <tr>
+              <td class="mono">p04390</td>
+              <td>23-Sep 16:53:45</td>
+              <td class="mono">patriot_c_3002</td>
+              <td>@asha_reports Stop peddling biased sensational fake news to divide Sundarpur! Your defamatory agenda is exposed.</td>
+              <td class="mono small-hash" title="b926da171bfa28e62ec01dcf37f8c01ebcdbb99a09e71c09bb56233b1128fa8e">b926da171bfa28e6...</td>
+            </tr>
+            
+            <tr>
+              <td class="mono">p04420</td>
+              <td>24-Sep 06:55:32</td>
+              <td class="mono">patriot_c_3002</td>
+              <td>@asha_reports Corrupt journalism at its peak. Stop spreading lies and defaming our local officials without proof!</td>
+              <td class="mono small-hash" title="786b92e3e50f516f96bac62b2a53e6a78e54a7205221ce270bf97782c859518e">786b92e3e50f516f...</td>
+            </tr>
+            
+            </tbody>
+          </table>
+        </div>
+        
+    </div>
+
+    <div class="limitations">
+      <strong>Operational Notice & Legal Limitations:</strong> This threat intelligence brief is generated by automated behavioral coordination analysis (coordination-network-toolkit, NetworkX Louvain) and AI legal reasoning (IBM Bob). All identified campaigns, classifications, and statutory provisions are decision-support indicators intended solely for guidance and must be independently verified by an investigating officer and verified by a designated legal officer before taking penal or administrative action.
+    </div>
+  </div>
+</body>
+</html>

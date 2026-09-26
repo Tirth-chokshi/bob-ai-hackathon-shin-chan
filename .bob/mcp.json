@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "threat-intel": {
+      "command": "python",
+      "args": ["src/mcp_server/server.py"],
+      "alwaysAllow": ["list_datasets", "list_campaigns", "get_campaign", "get_posts", "timeline", "account_profile"]
+    }
+  }
+}
