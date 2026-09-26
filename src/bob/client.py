@@ -8,6 +8,7 @@ import tempfile
 from pathlib import Path
 from config import BOB_API_KEY, BOB_MAX_COST, BOB_RULES
 from engine.schema import Campaign, Post, BobVerdict
+from engine.scoring import WEIGHTS
 from bob.legal import load_legal_table, allowed_offence_ids
 
 log = logging.getLogger(__name__)
@@ -15,6 +16,10 @@ log = logging.getLogger(__name__)
 
 class BobNotConfigured(Exception):
     pass
+
+
+def is_bob_configured() -> bool:
+    return bool(BOB_API_KEY and get_bob_cmd())
 
 
 def get_bob_cmd() -> list[str] | None:
@@ -121,25 +126,47 @@ def build_classification_prompt(
             "post_id": p.post_id,
             "account_id": p.account_id,
             "username": p.username,
-            "text": p.text
+            "created_at": p.created_at,
+            "text": p.text,
+            "urls": p.urls,
+            "hashtags": p.hashtags,
+            "repost_of": p.repost_of,
+            "reply_to": p.reply_to,
+            "account_created_at": p.account_created_at,
         }
-        for p in sample_posts[:10]
+        for p in sample_posts
     ]
+    score_breakdown = {
+        name: {
+            "points": points,
+            "max_points": int(100 * WEIGHTS[name]),
+            "weight": WEIGHTS[name],
+        }
+        for name, points in campaign.features.items()
+        if name in WEIGHTS
+    }
+    campaign_analysis = {
+        "campaign_id": campaign.id,
+        "coordination_score": campaign.score,
+        "score_components": score_breakdown,
+        "account_count": campaign.size,
+        "post_count": len(campaign.post_ids),
+        "top_hashtag": campaign.top_hashtag,
+        "coordination_signals": campaign.signals,
+        "first_seen_unix": campaign.first_seen,
+        "last_seen_unix": campaign.last_seen,
+        "median_account_age_days": campaign.median_account_age_days,
+    }
 
     prompt = f"""You are a police cyber cell threat analyst evaluating a coordinated social media campaign in India.
 
 RULES & LEGAL CONTEXT:
 {rules_text}
 
-CAMPAIGN EVIDENCE:
-- Campaign ID: {campaign.id}
-- Account count: {campaign.size}
-- Top hashtag: {campaign.top_hashtag}
-- CIB Risk Score: {campaign.score}/100
-- Score breakdown: {json.dumps(campaign.features)}
-- Coordination signals: {json.dumps(campaign.signals)}
+CAMPAIGN ANALYSIS (timestamps are Unix seconds; score components show points, maximum points, and weight):
+{json.dumps(campaign_analysis, indent=2)}
 
-SAMPLE POSTS:
+REPRESENTATIVE POSTS (all posts supplied by the analysis pipeline):
 {json.dumps(posts_repr, indent=2)}
 
 ALLOWED LEGAL OFFENCE IDs (choose ONLY from this list):
@@ -302,30 +329,31 @@ def classify(
     if verdict:
         return verdict, 0.0, True
 
+    if not BOB_API_KEY:
+        raise BobNotConfigured("BOB_API_KEY is missing from src/.env.")
+    bob_cmd = get_bob_cmd()
+    if not bob_cmd:
+        raise BobNotConfigured("IBM Bob Shell CLI was not found. Install Bob Shell and ensure `bob` is on the backend PATH.")
+
     legal_table = load_legal_table()
     prompt = build_classification_prompt(campaign, sample_posts, allowed_offence_ids())
 
     cost = 0.0
     verdict = None
+    last_error = None
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        for _ in range(2):
+            try:
+                raw_resp, call_cost = run_bob(prompt, work_dir=tmp_dir)
+                cost += call_cost
+                verdict = validate_verdict(extract_json(raw_resp), campaign, legal_table)
+                break
+            except Exception as e:
+                last_error = e
+                log.warning("Live Bob CLI inference attempt failed: %s", e)
 
-    # 1. Attempt live Bob CLI call if binary is available and API key is set
-    bob_cmd = get_bob_cmd()
-    if bob_cmd and BOB_API_KEY:
-        with tempfile.TemporaryDirectory() as tmp_dir:
-            for _ in range(2):
-                try:
-                    raw_resp, call_cost = run_bob(prompt, work_dir=tmp_dir)
-                    cost += call_cost
-                    verdict = validate_verdict(extract_json(raw_resp), campaign, legal_table)
-                    break
-                except Exception as e:
-                    log.warning("Live Bob CLI inference attempt failed: %s", e)
-
-    # 2. Fall back to legal & behavioral heuristic reasoning engine
-    if not verdict:
-        log.info("Generating verified verdict for campaign %s via legal-reasoning engine", campaign.id)
-        fallback_data = heuristic_classify(campaign, sample_posts, legal_table)
-        verdict = validate_verdict(fallback_data, campaign, legal_table)
+    if verdict is None:
+        raise RuntimeError(f"IBM Bob failed to return a valid assessment: {last_error}") from last_error
 
     bob_dir = run_dir / "bob"
     bob_dir.mkdir(parents=True, exist_ok=True)

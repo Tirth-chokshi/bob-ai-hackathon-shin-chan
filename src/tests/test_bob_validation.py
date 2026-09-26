@@ -1,8 +1,9 @@
 import pytest
+from bob import client
 from bob.client import validate_verdict
 from bob.legal import load_legal_table
 from engine.escalation import escalate
-from engine.schema import Campaign
+from engine.schema import Campaign, Post
 
 CAMPAIGN = Campaign(
     id="c1", accounts=["a1", "a2"], post_ids=["p1", "p2", "p3"], size=2, score=85,
@@ -43,3 +44,51 @@ def test_whitelists_legal_ids_and_evidence():
 def test_rejects_invalid_answers(bad):
     with pytest.raises(ValueError):
         validate_verdict(bob_answer(**bad), CAMPAIGN, load_legal_table())
+
+
+def test_prompt_includes_campaign_analysis_and_all_samples():
+    campaign = CAMPAIGN.model_copy(update={
+        "features": {"speed": 20, "duplication": 21, "multi_signal": 12},
+        "top_hashtag": "#example",
+        "median_account_age_days": 14,
+    })
+    posts = [
+        Post(post_id=f"p{index}", account_id="a1", username="user", created_at=index,
+             text=f"post {index}")
+        for index in range(20)
+    ]
+
+    prompt = client.build_classification_prompt(campaign, posts, [])
+
+    assert '"coordination_score": 85' in prompt
+    assert '"median_account_age_days": 14' in prompt
+    assert '"max_points": 25' in prompt
+    assert '"post_id": "p19"' in prompt
+
+
+def test_classify_requires_bob_cli_instead_of_returning_heuristic(tmp_path, monkeypatch):
+    monkeypatch.setattr(client, "BOB_API_KEY", "test-key")
+    monkeypatch.setattr(client, "get_bob_cmd", lambda: None)
+
+    with pytest.raises(client.BobNotConfigured, match="CLI was not found"):
+        client.classify(tmp_path, CAMPAIGN, [])
+
+    assert not (tmp_path / "bob" / "c1.json").exists()
+
+
+def test_classify_does_not_fall_back_when_bob_fails(tmp_path, monkeypatch):
+    monkeypatch.setattr(client, "BOB_API_KEY", "test-key")
+    monkeypatch.setattr(client, "get_bob_cmd", lambda: ["bob"])
+    calls = 0
+
+    def fail_bob(*args, **kwargs):
+        nonlocal calls
+        calls += 1
+        raise RuntimeError("Bob unavailable")
+
+    monkeypatch.setattr(client, "run_bob", fail_bob)
+    with pytest.raises(RuntimeError, match="IBM Bob failed"):
+        client.classify(tmp_path, CAMPAIGN, [])
+
+    assert calls == 2
+    assert not (tmp_path / "bob" / "c1.json").exists()

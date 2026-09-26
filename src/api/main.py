@@ -17,12 +17,12 @@ from fastapi import FastAPI, HTTPException, UploadFile, File
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 
-from config import BOB_API_KEY, WEB_DIST, RUNS, SAMPLES
+from config import WEB_DIST, RUNS, SAMPLES
 from engine.normalize import load_posts
 from engine.pipeline import analyze, STAGES
 from engine.schema import Campaign, Post
 from engine.escalation import escalate
-from bob.client import BobNotConfigured, cached_verdict, classify
+from bob.client import BobNotConfigured, cached_verdict, classify, is_bob_configured
 from brief.render import render_brief
 
 log = logging.getLogger(__name__)
@@ -114,7 +114,7 @@ def run_job(dataset_id: str, source: Path):
 
 @app.get("/api/status")
 def status():
-    return {"bob_configured": bool(BOB_API_KEY), "version": "0.2.0"}
+    return {"bob_configured": is_bob_configured(), "version": "0.2.0"}
 
 
 @app.get("/api/datasets")
@@ -241,7 +241,7 @@ def get_verdict(dataset_id: str, cid: str):
 def classify_campaign(dataset_id: str, cid: str):
     run_dir = run_dir_for(dataset_id)
     campaign = load_campaign(run_dir, cid)
-    sample_posts = [Post.model_validate(p) for p in load_samples(run_dir, cid)[:10]]
+    sample_posts = [Post.model_validate(p) for p in load_samples(run_dir, cid)[:20]]
 
     try:
         verdict, cost, is_cached = classify(run_dir, campaign, sample_posts)

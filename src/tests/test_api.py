@@ -3,6 +3,7 @@ from fastapi.testclient import TestClient
 import api.main as main
 import engine.pipeline as pipeline
 from config import SAMPLES
+from engine.schema import Campaign
 
 
 def test_upload_analyse_delete(tmp_path, monkeypatch):
@@ -39,3 +40,36 @@ def test_upload_analyse_delete(tmp_path, monkeypatch):
         assert c.delete("/api/datasets/demo").status_code == 400
         assert c.delete(f"/api/datasets/{ds}").status_code == 200
         assert not (tmp_path / ds).exists()
+
+
+def test_classify_sends_all_stored_sample_posts(monkeypatch):
+    campaign = Campaign(
+        id="c1", accounts=["a1"], post_ids=[f"p{i}" for i in range(20)],
+        size=1, score=50, features={}, signals=[], first_seen=0, last_seen=19,
+    )
+    samples = [
+        {"post_id": f"p{i}", "account_id": "a1", "username": "user",
+         "created_at": i, "text": f"post {i}"}
+        for i in range(20)
+    ]
+    received = []
+
+    class Verdict:
+        def model_dump(self):
+            return {"threat_type": "benign_coordination"}
+
+    def fake_classify(run_dir, campaign_arg, sample_posts):
+        received.extend(sample_posts)
+        return Verdict(), 0.01, False
+
+    monkeypatch.setattr(main, "load_campaign", lambda *_: campaign)
+    monkeypatch.setattr(main, "load_samples", lambda *_: samples)
+    monkeypatch.setattr(main, "classify", fake_classify)
+    monkeypatch.setattr(main, "escalate", lambda *_: {"level": "LOW"})
+
+    with TestClient(main.app) as client:
+        response = client.post("/api/datasets/test/campaigns/c1/classify")
+
+    assert response.status_code == 200
+    assert len(received) == 20
+    assert received[-1].post_id == "p19"
