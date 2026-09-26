@@ -17,6 +17,12 @@ team:
   members:
     - name: "Tirth Chokshi"            # REQUIRED — Team member 1
       email: "chokshitirth4@gmail.com"
+    - name: "Milind Pawar"
+      email: ""
+    - name: "Jainik Devada"
+      email: ""
+    - name: "Jigar Jariwala"
+      email: ""
 
 submission:
   title: "Social Media Threat Intelligence Engine"  # REQUIRED — Project display name, e.g., "SmartOps Dashboard"
@@ -45,7 +51,7 @@ submission:
     frameworks: ["FastAPI", "Uvicorn", "Pydantic", "NetworkX", "coordination-network-toolkit", "React", "Vite"]
     ibm_technologies: ["IBM Bob", "IBM Bob MCP integration"]
     databases: ["SQLite"]
-    other: ["Tailwind CSS", "Cytoscape.js (react-cytoscapejs)", "Recharts", "GitHub Actions"]
+    other: ["Tailwind CSS", "Cytoscape.js", "lucide-react", "GitHub Actions"]
 
   what_we_are_most_proud_of: >         # Optional but recommended — guides judges to your best work
     Behaviour-first detection: the engine flags coordinated campaigns even when each individual post looks harmless, and
@@ -55,7 +61,9 @@ submission:
   known_limitations: >                 # Optional but recommended — be honest about gaps
     Runs on a synthetic post batch with planted campaigns plus public research datasets; no live platform ingestion.
     Scores and classifications are decision support, and legal sections need verification by a legal officer.
-    CIB score weights are hand-set; classification quality on Hindi/Hinglish is not yet formally evaluated.
+    CIB score weights are hand-set on the synthetic scenario: real campaigns score 35-62 (IRA 35-37, because that
+    archive lacks account creation dates and retweet targets). Bob's classification is shown on 4 campaigns, not benchmarked, and
+    Hindi/Hinglish quality is not yet evaluated.
 
 # =============================================================================
 # ARTIFACT LOCATIONS

@@ -1,141 +1,189 @@
-import React from 'react'
-import { VerdictCard } from './VerdictCard'
-import { X, Hash, Users, Clock, Flame, ShieldAlert } from 'lucide-react'
+import React, { useEffect, useRef, useState } from 'react'
+import { AlertTriangle, MousePointerClick } from 'lucide-react'
+import { api } from '../api'
+import { Badge, Button, Label, LevelBadge, ScoreBar, Spinner } from '../ui'
+import { campaignColor, FEATURES, SIGNALS, THREATS, fmt, fmtTime } from '../labels'
 
-export function CampaignPanel({
-  campaign,
-  verdictData,
-  verdictLoading,
-  onClassify,
-  onClose,
-}) {
+// Campaign detail: identity → why flagged → IBM Bob assessment → first posts (docs/design-system.md)
+export function CampaignPanel({ datasetId, campaignId, bobConfigured, onAssessed }) {
+  const [campaign, setCampaign] = useState(null)
+  const [result, setResult] = useState(null) // { verdict, escalation, cached, cost }
+  const [asking, setAsking] = useState(false)
+  const [error, setError] = useState(null)
+  const current = useRef(campaignId)
+  current.current = campaignId
+
+  useEffect(() => {
+    setCampaign(null)
+    setResult(null)
+    setError(null)
+    if (!campaignId) return
+    let cancelled = false
+    api.campaign(datasetId, campaignId)
+      .then((c) => !cancelled && setCampaign(c))
+      .catch((e) => !cancelled && setError(e.message))
+    api.verdict(datasetId, campaignId) // cached only; 404 = not assessed yet
+      .then((v) => !cancelled && setResult(v))
+      .catch(() => {})
+    return () => { cancelled = true }
+  }, [datasetId, campaignId])
+
+  const ask = async () => {
+    const cid = campaignId
+    setAsking(true)
+    setError(null)
+    try {
+      const r = await api.classify(datasetId, cid)
+      onAssessed(cid, { threat_type: r.verdict.threat_type, severity: r.verdict.severity, level: r.escalation.level })
+      if (current.current === cid) setResult(r)
+    } catch (e) {
+      if (current.current === cid) setError(e.message)
+    } finally {
+      setAsking(false)
+    }
+  }
+
+  if (!campaignId) {
+    return (
+      <div className="bg-surface border border-line rounded-lg p-6 text-center text-sm text-muted">
+        <MousePointerClick className="w-6 h-6 mx-auto text-faint mb-2" aria-hidden />
+        Select a campaign to see why it was flagged and IBM Bob's assessment.
+      </div>
+    )
+  }
   if (!campaign) {
     return (
-      <div className="p-8 text-center text-slate-500 text-sm bg-slate-900/40 rounded-2xl border border-slate-800">
-        Select a campaign cluster to inspect its forensic profile, feature contribution, and IBM Bob classification.
+      <div className="bg-surface border border-line rounded-lg p-6 text-sm text-muted flex items-center justify-center gap-2">
+        {error ? <span className="text-urgent">{error}</span> : <><Spinner /> Loading campaign…</>}
       </div>
     )
   }
 
-  const featureLabels = {
-    speed: { label: 'Temporal Velocity', max: 25 },
-    duplication: { label: 'Lexical Overlap', max: 25 },
-    multi_signal: { label: 'Multi-Signal Fusion', max: 15 },
-    fresh_accounts: { label: 'Account Freshness', max: 15 },
-    burst: { label: 'Activity Burst Ratio', max: 10 },
-    concentration: { label: 'Entity Concentration', max: 10 },
-  }
+  const evidence = new Set(result?.verdict.evidence_post_ids ?? [])
 
   return (
-    <div className="space-y-6">
-      {/* Top Header */}
-      <div className="p-5 rounded-2xl bg-slate-900/90 border border-slate-800 shadow-lg">
-        <div className="flex items-center justify-between gap-2 mb-3">
-          <div className="flex items-center gap-2">
-            <span className="px-2.5 py-1 rounded-lg font-mono font-black text-sm bg-indigo-600 text-white">
-              {campaign.id.toUpperCase()}
-            </span>
-            <span className="text-base font-bold text-white">Forensic Investigation</span>
-          </div>
-
-          <button
-            onClick={onClose}
-            className="p-1 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-all cursor-pointer"
-          >
-            <X className="w-4 h-4" />
-          </button>
+    <article className="bg-surface border border-line rounded-lg divide-y divide-line">
+      {/* 1. Identity */}
+      <header className="p-4">
+        <div className="flex items-center gap-2 min-w-0">
+          <span className="w-3 h-3 rounded-full shrink-0" style={{ background: campaignColor(campaign.id) }} />
+          <h2 className="text-base font-semibold">Campaign {campaign.id.toUpperCase()}</h2>
+          {campaign.top_hashtag && <span className="text-sm text-muted truncate">{campaign.top_hashtag}</span>}
         </div>
+        <p className="text-xs text-muted font-mono mt-1.5">
+          {fmt(campaign.size)} accounts · {fmt(campaign.post_count)} posts · {fmtTime(campaign.first_seen)} – {fmtTime(campaign.last_seen)}
+        </p>
+      </header>
 
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs font-mono">
-          <div className="p-2.5 rounded-lg bg-slate-950/60 border border-slate-800/80">
-            <span className="text-slate-500 block text-[10px]">CIB RISK</span>
-            <span className="text-white font-bold text-sm">{campaign.score}/100</span>
-          </div>
-          <div className="p-2.5 rounded-lg bg-slate-950/60 border border-slate-800/80">
-            <span className="text-slate-500 block text-[10px]">ACCOUNTS</span>
-            <span className="text-white font-bold text-sm">{campaign.size}</span>
-          </div>
-          <div className="p-2.5 rounded-lg bg-slate-950/60 border border-slate-800/80">
-            <span className="text-slate-500 block text-[10px]">HASHTAG</span>
-            <span className="text-indigo-400 font-bold text-xs truncate block">{campaign.top_hashtag || 'None'}</span>
-          </div>
-          <div className="p-2.5 rounded-lg bg-slate-950/60 border border-slate-800/80">
-            <span className="text-slate-500 block text-[10px]">MEDIAN AGE</span>
-            <span className="text-white font-bold text-xs">
-              {campaign.median_account_age_days !== null ? `${campaign.median_account_age_days}d` : 'Unknown'}
-            </span>
-          </div>
+      {/* 2. Why flagged */}
+      <section className="p-4 space-y-3">
+        <div className="flex items-baseline justify-between">
+          <Label>Coordination score</Label>
+          <span className="font-mono text-sm"><strong className="text-lg">{campaign.score}</strong> / 100</span>
         </div>
-      </div>
-
-      {/* Why Flagged — Feature Contribution Bars */}
-      <div className="p-5 rounded-2xl bg-slate-900/60 border border-slate-800 shadow-md space-y-3">
-        <div className="flex items-center justify-between">
-          <h4 className="text-xs font-bold uppercase tracking-wider text-slate-300">
-            Why Flagged (Explainable Feature Attribution)
-          </h4>
-          <span className="text-[11px] font-mono text-indigo-400">Sum = {campaign.score} pts</span>
-        </div>
-
-        <div className="space-y-2.5">
-          {Object.entries(campaign.features || {}).map(([featKey, points]) => {
-            const meta = featureLabels[featKey] || { label: featKey, max: 25 }
-            const pct = Math.min(100, Math.round((points / meta.max) * 100))
+        <ul className="space-y-2.5">
+          {Object.entries(campaign.features).map(([key, points]) => {
+            const f = FEATURES[key] ?? { label: key, max: 25 }
             return (
-              <div key={featKey} className="space-y-1">
-                <div className="flex justify-between text-xs">
-                  <span className="text-slate-300 font-medium">{meta.label}</span>
-                  <span className="font-mono text-slate-400">
-                    <strong className="text-white">{points}</strong> / {meta.max} pts
-                  </span>
+              <li key={key}>
+                <div className="flex justify-between text-xs mb-1">
+                  <span>{f.label}</span>
+                  <span className="font-mono text-muted">{points}/{f.max}</span>
                 </div>
-                <div className="w-full h-2 rounded-full bg-slate-800 overflow-hidden">
-                  <div
-                    className="h-full rounded-full bg-gradient-to-r from-indigo-500 to-violet-500 transition-all duration-500"
-                    style={{ width: `${pct}%` }}
-                  ></div>
-                </div>
-              </div>
+                <ScoreBar value={points} max={f.max} color={campaignColor(campaign.id)} />
+              </li>
             )
           })}
+        </ul>
+        <div className="flex flex-wrap gap-1.5 pt-1">
+          {campaign.signals.map((s) => <Badge key={s}>{SIGNALS[s] ?? s}</Badge>)}
         </div>
+      </section>
+
+      {/* 3. IBM Bob assessment */}
+      <section className="p-4 space-y-3">
+        <Label>IBM Bob assessment</Label>
+        {asking ? (
+          <p className="flex items-center gap-2 text-sm text-muted"><Spinner className="w-4 h-4 text-accent" /> IBM Bob is reading the first 10 posts. This takes about 15 seconds.</p>
+        ) : result ? (
+          <Assessment result={result} />
+        ) : (
+          <div className="space-y-3">
+            <p className="text-sm text-muted">
+              Not assessed yet. IBM Bob reads the first 10 posts and returns the threat type, target, severity,
+              legal sections to check and the posts it relied on.
+            </p>
+            <Button variant="primary" onClick={ask} disabled={!bobConfigured}>Ask IBM Bob</Button>
+            {!bobConfigured && <p className="text-xs text-muted">IBM Bob is not configured. Add BOB_API_KEY to src/.env and restart the app.</p>}
+          </div>
+        )}
+        {error && <p className="text-sm text-urgent">{error}</p>}
+      </section>
+
+      {/* 4. First posts */}
+      <section className="p-4">
+        <Label className="mb-3">First posts, oldest first</Label>
+        <ol className="space-y-2">
+          {campaign.sample_posts.map((p) => (
+            <li key={p.post_id} className={`rounded-md border p-3 text-sm ${evidence.has(p.post_id) ? 'border-accent/50 bg-subtle' : 'border-line'}`}>
+              <div className="flex items-center justify-between gap-2 text-xs font-mono text-muted mb-1">
+                <span className="truncate">@{p.username.replace(/^@/, '')}</span>
+                <span className="shrink-0">{fmtTime(p.created_at)}</span>
+              </div>
+              <p className="break-words">{p.text}</p>
+              <div className="flex items-center justify-between mt-1.5 text-xs font-mono text-faint">
+                <span>{p.post_id}</span>
+                {evidence.has(p.post_id) && <span className="text-accent font-sans">Cited by IBM Bob</span>}
+              </div>
+            </li>
+          ))}
+        </ol>
+      </section>
+    </article>
+  )
+}
+
+function Assessment({ result }) {
+  const { verdict, escalation, cached, cost } = result
+  return (
+    <div className="space-y-3 text-sm">
+      <div className="flex flex-wrap items-center gap-2">
+        <LevelBadge level={escalation.level} />
+        <span className="font-medium">{THREATS[verdict.threat_type] ?? verdict.threat_type}</span>
+        <span className="text-muted">· severity {verdict.severity} of 5</span>
+        <span className="ml-auto text-xs text-faint">{cached ? 'Saved result' : `Cost ${cost.toFixed(3)} Bobcoins`}</span>
       </div>
 
-      {/* IBM Bob AI Verdict & Escalation */}
-      <VerdictCard
-        verdictData={verdictData}
-        loading={verdictLoading}
-        onClassify={onClassify}
-        campaignId={campaign.id}
-      />
+      {verdict.offline_call_to_action && (
+        <div className="flex gap-2 rounded-md bg-urgent-soft text-urgent px-3 py-2">
+          <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0" aria-hidden />
+          <span>Call to gather offline detected in the posts.</span>
+        </div>
+      )}
 
-      {/* Sample Evidence Posts */}
-      {campaign.sample_posts && campaign.sample_posts.length > 0 && (
-        <div className="p-5 rounded-2xl bg-slate-900/60 border border-slate-800 shadow-md space-y-3">
-          <div className="flex items-center justify-between">
-            <h4 className="text-xs font-bold uppercase tracking-wider text-slate-300">
-              Sample Forensic Evidence ({campaign.sample_posts.length} posts)
-            </h4>
-            <span className="text-[10px] text-slate-500 font-mono">Oldest first</span>
-          </div>
+      <dl className="space-y-2">
+        <div><dt className="text-xs text-muted">Target</dt><dd>{verdict.target}</dd></div>
+        <div><dt className="text-xs text-muted">Narrative</dt><dd>{verdict.narrative}</dd></div>
+      </dl>
 
-          <div className="space-y-2.5 max-h-96 overflow-y-auto pr-1">
-            {campaign.sample_posts.map((post) => (
-              <div
-                key={post.post_id}
-                className="p-3 rounded-xl bg-slate-950/70 border border-slate-800/80 text-xs space-y-1 hover:border-slate-700 transition-all"
-              >
-                <div className="flex items-center justify-between font-mono text-[11px]">
-                  <span className="font-bold text-indigo-400">{post.username}</span>
-                  <span className="text-slate-500">
-                    {new Date(post.created_at * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
-                  </span>
-                </div>
-                <p className="text-slate-200 leading-relaxed font-sans">{post.text}</p>
-                <div className="text-[10px] font-mono text-slate-600">ID: {post.post_id}</div>
-              </div>
+      <div>
+        <div className="text-xs text-muted mb-1">Recommended actions</div>
+        <ul className="list-disc pl-5 space-y-0.5">
+          {escalation.actions.map((a) => <li key={a}>{a}</li>)}
+        </ul>
+      </div>
+
+      {verdict.legal_suggestions.length > 0 && (
+        <div>
+          <div className="text-xs text-muted mb-1">Legal sections to check <span className="text-alert">(verify with a legal officer)</span></div>
+          <ul className="space-y-1.5">
+            {verdict.legal_suggestions.map((s) => (
+              <li key={s.id} className="rounded-md bg-subtle px-3 py-2">
+                <div className="font-medium">{s.law} <span className="text-muted font-normal">{s.ipc && s.ipc !== '—' && `(was ${s.ipc}) · `}{s.title}</span></div>
+                <div className="text-muted text-xs mt-0.5">{s.why}</div>
+              </li>
             ))}
-          </div>
+          </ul>
         </div>
       )}
     </div>

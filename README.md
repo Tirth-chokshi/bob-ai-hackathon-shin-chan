@@ -44,34 +44,45 @@ Most conventional AI threat detectors classify posts individually. In contrast, 
 
 ## 📸 Interface & Workflow Screenshots
 
-| Forensic Overview & Timeline | Multi-Signal Coordination Network |
+| Overview | Network |
 |---|---|
-| ![Forensic Overview](demo/screenshots/02-forensic-overview.png) | ![Coordination Network](demo/screenshots/03-coordination-network.png) |
+| ![Overview](demo/screenshots/02-overview.png) | ![Network](demo/screenshots/03-network.png) |
 
-| IBM Bob Threat Classification | Section 63 BSA Escalation Brief |
+| IBM Bob assessment (benign decoy) | Threat brief |
 |---|---|
-| ![IBM Bob Verdict](demo/screenshots/04-ibm-bob-verdict.png) | ![Threat Brief](demo/screenshots/05-threat-brief.png) |
+| ![IBM Bob assessment of the benign decoy](demo/screenshots/04-bob-assessment.png) | ![Threat Brief](demo/screenshots/05-threat-brief.png) |
 
 *(Full gallery with descriptions available in [`demo/screenshots/README.md`](demo/screenshots/README.md))*
 
 ---
 
-## 📊 System Evaluation & Benchmark Results
+## 📊 Evaluation
 
-Evaluated against ground-truth synthetic scenarios (4,538 posts, 956 accounts) and real-world datasets (FiveThirtyEight Russian Troll Tweets, X/Twitter Information Operations Archive).
+Every number here comes from `python src/eval/measure.py`; the full output is in [`src/eval/results.md`](src/eval/results.md).
 
-| Campaign Ring | Planted Threat Vector | Accounts | Detection Recall | Assigned Cluster | CIB Risk Score | IBM Bob Verdict | Escalation Level |
+**Synthetic scenario:** 4,658 posts from 956 accounts. It contains three planted threat rings plus a benign decoy (cricket fans posting the same chants at three match moments).
+
+| Ring | Planted | Accounts | Found | Cluster | CIB score | IBM Bob verdict | Escalation |
 |---|---|---|---|---|---|---|---|
-| **Ring A** | Dam Flooding Rumour + 7 PM Gathering | 40 | **100.0%** | `c2` | **89 / 100** | `incitement` (Severity 4/5) | **URGENT** (BNSS-163, BNS-353) |
-| **Ring B** | Leaked Document Fake URLs | 25 | **100.0%** | `c1` | **92 / 100** | `organized_misinformation` | **URGENT** (ITA-69A, BNS-61) |
-| **Ring C** | Targeted Journalist Harassment | 30 | **100.0%** | `c3` | **88 / 100** | `targeted_harassment` | **ALERT** (BNS-356, BNS-79) |
-| **Decoy D** | Local Cricket Win Celebrations | 60 | **0% (Filtered)** | None | **0 / 100** | Benign baseline | **MONITOR** (Surveillance only) |
+| **A** | Dam-flood rumour + 7 PM gathering call | 40 | 40 (100%) | `c2` | **89** | `incitement` (severity 5) | **URGENT** |
+| **B** | Fake leaked-document links | 25 | 25 (100%) | `c1` | **92** | `organized_misinformation` (4) | **URGENT** |
+| **C** | Harassment pile-on against a journalist | 30 | 30 (100%) | `c3` | **88** | `targeted_harassment` (4) | **URGENT** |
+| **D** | Decoy: cricket fans chanting | 60 | 60 (100%) | `c4` | **72** | `benign_coordination` (1) | **MONITOR** |
 
-### Key Forensic Milestones
-- **100.0% Detection Recall:** Discovered and isolated all planted coordinated rings with zero missed malicious nodes.
-- **Zero False Positives on Benign Coordination:** Decoy D generated 0 threat flags, proving that volume spikes do not trigger false alerts without behavioral synchronization.
-- **Sub-Second to 11s Pipeline:** Graph construction, multi-signal edge resolution, and Louvain clustering complete in under 5 seconds on 5,000-post batches.
-- **Economical AI Inference:** Headless IBM Bob classifications average **~0.026 BOB coins** per campaign (~$0.02), with instant zero-cost retrieval on cached runs.
+- All four groups are found as separate clusters with no extra accounts, and no other campaigns are reported.
+- The decoy *is* coordinated, so it is detected, but it scores lowest. IBM Bob labels it benign, and the rules escalate it only to MONITOR. This is the point of the design: behaviour first, content second.
+- The full analysis takes about 18 s on a laptop.
+
+**Real research datasets (no ground truth):**
+
+| Dataset | Analysed | Campaigns found | CIB scores |
+|---|---|---|---|
+| FiveThirtyEight IRA tweets | 3,313 posts from 44 accounts (busiest 6 hours) | 4 campaigns, 43 accounts (shared links) | 35–37 |
+| X/Twitter IO archive sample | 51,410 posts from 6,997 accounts (whole file) | 3 campaigns, 38 accounts (retweets, replies) | 59–62 |
+
+Real campaigns score lower than the planted rings. The weights were set by hand on the synthetic scenario, and the IRA file has no account creation dates or retweet targets.
+
+**IBM Bob cost:** about 0.026 Bobcoins and 10–20 s per classification (measured). Cached verdicts cost nothing.
 
 ---
 
@@ -101,7 +112,7 @@ All statutory suggestions are filtered against our legal reference table (`.bob/
 - **Coordination Detection:** `coordination_network_toolkit` (QUT Digital Observatory, MIT license)
 - **Graph Clustering:** `NetworkX` (Louvain community modularity algorithm)
 - **Backend Service:** `FastAPI`, `Uvicorn`, `Pydantic v2`, `python-dotenv`
-- **Frontend Architecture:** `React 19`, `Vite`, `Tailwind CSS v4`, `Cytoscape.js`, `Lucide Icons`
+- **Frontend Architecture:** `React 19`, `Vite`, `Tailwind CSS v4`, `Cytoscape.js`, `Lucide Icons`; design language in [`docs/design-system.md`](docs/design-system.md)
 - **AI & Reasoning:** `IBM Bob Shell 2.0` (Headless CLI `bob run`, custom mode `osint-analyst`, FastMCP integration server)
 - **Storage:** Local SQLite for multi-signal joins, JSON disk runs with SHA-256 tamper-evident logs
 
@@ -110,8 +121,8 @@ All statutory suggestions are filtered against our legal reference table (`.bob/
 ## ⚡ Quickstart & How to Run
 
 ### 1. Prerequisites
-- Python 3.10+ and Node.js v20+
-- IBM Bob Shell (`npm install -g bobshell`)
+- Python 3.10+ and Node.js 24+
+- IBM Bob Shell ([bob.ibm.com/download](https://bob.ibm.com/download)); see [`docs/setup-guide.md`](docs/setup-guide.md) for details
 
 ### 2. Setup
 ```bash
@@ -121,6 +132,9 @@ cd bob-ai-hackathon-shin-chan
 # Install Python backend dependencies
 python -m pip install -r src/requirements.txt
 
+# Build the React frontend (src/web/dist is not committed)
+cd src/web && npm ci && npm run build && cd ../..
+
 # (Optional) Add your IBM Bob API key to src/.env for live classifications
 cp src/.env.example src/.env
 ```
@@ -129,7 +143,7 @@ cp src/.env.example src/.env
 ```bash
 python src/main.py
 ```
-Open **http://127.0.0.1:8000** in your browser. The pre-analyzed demo dataset loads immediately with multi-signal coordination graphs, interactive activity timeline, explainable CIB risk scores, and cached IBM Bob legal verdicts.
+Open **http://127.0.0.1:8000** in your browser. The pre-analysed demo dataset loads immediately with the coordination graph, activity timeline, explainable CIB scores and cached IBM Bob verdicts, so it works without an API key.
 
 ---
 
@@ -147,9 +161,9 @@ Investigate detected campaigns conversationally in Bob Chat:
 3. Ask investigative questions:
    - *"Which accounts started the dam flooding rumour in campaign c2?"*
    - *"List the top coordinated campaigns in dataset demo sorted by CIB risk."*
-   - *"What evidence hashes are recorded for campaign c1 under BSA Section 63?"*
+   - *"Show the first posts of campaign c3 and tell me which account posted first."*
 
-Bob queries the `threat-intel` FastMCP server (`src/mcp_server/server.py`) directly to cite verified post IDs and forensic evidence.
+Bob queries the read-only `threat-intel` FastMCP server (`src/mcp_server/server.py`) and cites post IDs from the analysed data.
 
 ---
 

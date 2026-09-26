@@ -76,27 +76,12 @@ def get_campaign(dataset_id: str, campaign_id: str) -> dict:
 
 @mcp.tool()
 def get_posts(dataset_id: str, campaign_id: str, limit: int = 10) -> list[dict]:
-    """Returns sample posts belonging to a campaign, ordered chronologically (oldest first)."""
-    run_dir = RUNS / dataset_id
-    camp_file = run_dir / "campaigns.json"
-    posts_file = run_dir / "posts.json"
-
-    if not camp_file.exists() or not posts_file.exists():
+    """Returns the first posts of a campaign (up to 20), ordered chronologically (oldest first)."""
+    samples_file = RUNS / dataset_id / "samples.json"
+    if not samples_file.exists():
         return []
-
-    with open(camp_file, encoding="utf-8") as f:
-        camps = json.load(f)
-    target = next((c for c in camps if c["id"] == campaign_id), None)
-    if not target:
-        return []
-
-    target_post_ids = set(target.get("post_ids", []))
-    with open(posts_file, encoding="utf-8") as f:
-        all_posts = json.load(f)
-
-    camp_posts = [p for p in all_posts if p.get("post_id") in target_post_ids]
-    camp_posts.sort(key=lambda p: (p.get("created_at", 0), p.get("post_id", "")))
-    return camp_posts[:limit]
+    with open(samples_file, encoding="utf-8") as f:
+        return json.load(f).get(campaign_id, [])[:limit]
 
 
 @mcp.tool()

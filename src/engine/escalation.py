@@ -1,7 +1,8 @@
+from typing import Any
 from engine.schema import BobVerdict
 
 
-def escalate(score: int, verdict: BobVerdict) -> dict[str, any]:
+def escalate(score: int, verdict: BobVerdict) -> dict[str, Any]:
     """
     Applies deterministic police cyber cell escalation rules based on
     CIB score, threat classification, and offline call-to-action flags.

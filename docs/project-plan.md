@@ -39,7 +39,7 @@
 
 - **What:** A tool for police cyber cells that takes a batch of social media posts, finds **groups of accounts acting together** (coordinated inauthentic behaviour, CIB), scores how suspicious each group is, has **IBM Bob** classify the threat and suggest BNS / IT Act sections, and produces a **time-stamped threat brief** with escalation steps.
 - **Why it wins:** Most teams will classify posts one at a time. The real cases in the problem statement were *coordinated campaigns*. We detect coordination first (behaviour), then read the content — so we catch campaigns even when each post looks harmless.
-- **Built on:** the QUT Digital Observatory **coordination-network-toolkit** (published research methods, verified running on our laptop), **NetworkX**, **FastAPI**, **SQLite**, a **React** frontend (Vite, Tailwind, react-cytoscapejs, Recharts), and **IBM Bob**. Step-by-step build instructions: [`execution-plan.md`](execution-plan.md).
+- **Built on:** the QUT Digital Observatory **coordination-network-toolkit** (published research methods, verified running on our laptop), **NetworkX**, **FastAPI**, **SQLite**, a **React** frontend (Vite, Tailwind, Cytoscape.js, SVG timeline), and **IBM Bob**. Step-by-step build instructions: [`execution-plan.md`](execution-plan.md).
 - **Where Bob runs:** (1) the backend calls `bob run` with our **Bob API key** to classify each campaign and (2) write the brief's executive summary; (3) officers investigate in **Bob chat** through our **MCP server**; (4) the repo's `.bob/` folder holds the mode, rules (incl. the legal table) and skill; (5) Bob is our coding partner. Tested: ~0.025 coins and ~11 s per classification.
 - **Data:** a synthetic scenario with planted campaigns (ground truth for measuring accuracy) plus real research datasets (X Information Operations archive, IRA troll tweets, CONSTRAINT-2021 Hindi hostility).
 
@@ -169,7 +169,7 @@ This is both more accurate and cheaper: Bob reads a handful of campaigns, not th
 ## 7. System Architecture
 
 ```
-       Browser: React app (Vite + Tailwind + react-cytoscapejs + Recharts)
+       Browser: React app (Vite + Tailwind + Cytoscape.js + SVG timeline)
        dev: Vite server :5173 proxies /api → :8000 · demo: built into src/web/dist
                          │  fetch /api/...
                          ▼
@@ -204,7 +204,7 @@ This is both more accurate and cheaper: Bob reads a handful of campaigns, not th
 | Escalation | Rule table | `src/engine/escalation.py` | Deterministic MONITOR / ALERT / URGENT |
 | Brief | HTML template + **IBM Bob** summary | `src/brief/render.py` | Bob writes the executive summary only |
 | REST API + static files | FastAPI + Uvicorn | `src/api/main.py` | Serves the built React app from `src/web/dist/` |
-| Frontend | React 19 + Vite, Tailwind CSS, react-cytoscapejs, Recharts | `src/web/` | Mock mode (`VITE_USE_MOCK=true`) for building before the API is ready |
+| Frontend | React 19 + Vite, Tailwind CSS, Cytoscape.js, SVG timeline | `src/web/` | Built to `src/web/dist/`, served by FastAPI |
 | Investigation console | **IBM Bob chat** + Python `mcp` SDK | `src/mcp_server/server.py`, `.bob/mcp.json` | Read-only tools |
 | Bob behaviour | Custom mode, rules, skill | `.bob/` | Used by Bob chat; rules also embedded in `bob run` prompts |
 | Demo data | Our generator | `src/scenario/generate_scenario.py` | `posts.csv` + `truth.json`; bundled copy + pre-analysed run in `src/samples/` |
@@ -348,7 +348,7 @@ verdict = BobVerdict.model_validate_json(extract_json(reply))
 **How the prompt is built:** the code reads `.bob/rules-osint-analyst/*.md` (legal table, escalation rules, no-profiling rule) and puts them into the prompt, followed by the output schema, the campaign stats and ~10 representative posts. Because `bob run` runs in an empty working folder, it does not load the repo's `.bob/` mode by itself — embedding the rule files keeps **one source of truth** for both `bob run` and Bob chat.
 
 Safeguards:
-- **Schema validation** with Pydantic; invalid output → one retry, then marked "unverified".
+- **Schema validation** with Pydantic; invalid output → one retry, then an error (no guessed verdict is shown or cached).
 - **Evidence check:** every cited post ID must belong to the campaign; others are dropped.
 - **Legal whitelist:** Bob answers with section IDs from the legal table (e.g. `BNS-353`); any ID not in the table is dropped in code, and the code adds the official title and IPC equivalent.
 - **Cache:** results saved to `data/runs/<id>/bob/<campaign>.json` — each campaign costs coins once; the demo replays from cache.
@@ -417,8 +417,8 @@ We use Bob (Plan mode → Agent mode) to plan and build the project, with our gl
 | MCP server | Python `mcp` SDK (FastMCP) | ~40 lines; same code as the engine | Custom JSON-RPC |
 | Frontend | React 19 + Vite (JavaScript) | Team decision; components map cleanly to our 4 tabs and side panel; fast dev server with hot reload; `/api` proxy | Vanilla JS (harder to manage state), Streamlit (team decision), TypeScript (extra friction for a one-day build) |
 | Styling | Tailwind CSS v4 (`@tailwindcss/vite`) | Fast to style without writing CSS files; print styles via `print:` variants | Component libraries (heavier, more to learn) |
-| Graph UI | Cytoscape.js via `react-cytoscapejs` | Built for network graphs; click/zoom/layouts; React wrapper | D3 (more code), vis.js |
-| Charts | Recharts | Charts built as React components; simple area chart for the timeline | Chart.js (needs a wrapper) |
+| Graph UI | Cytoscape.js (used directly from a React effect) | Built for network graphs; click/zoom/layouts | D3 (more code), vis.js |
+| Charts | Hand-drawn SVG | One line chart needs no chart library | Recharts, Chart.js |
 | State & data | React `useState` + a small `api.js` fetch wrapper | Four tabs and one selected campaign — no need for a state library | Redux, React Query (unnecessary for this size) |
 | PDF | `window.print()` + print CSS | Zero dependencies | ReportLab, WeasyPrint |
 | Testing | pytest | One engine test proves the core works | — |
@@ -454,7 +454,6 @@ class BobVerdict(BaseModel):
     offline_call_to_action: bool
     legal_suggestions: list[LegalSuggestion]
     evidence_post_ids: list[str]
-    verified: bool = True                # False if the retry also failed validation
 
 class LegalSuggestion(BaseModel):
     id: str                              # must exist in the legal table, e.g. "BNS-353"
@@ -481,10 +480,12 @@ data/runs/<dataset_id>/
 | Method & path | Returns |
 |---|---|
 | `POST /api/datasets` (CSV upload) | `{dataset_id, posts, accounts}` |
-| `GET /api/datasets/demo` | list of bundled demo datasets |
+| `GET /api/datasets` | all datasets (bundled demo + uploads) with post/account counts |
+| `GET /api/datasets/{id}/campaigns` | campaign list for an analysed dataset |
+| `GET /api/datasets/{id}/campaigns/{cid}/verdict` | cached Bob verdict + escalation (404 if not classified; never calls Bob) |
 | `POST /api/datasets/{id}/analyze` | `{campaigns: Campaign[]}` |
 | `GET /api/datasets/{id}/graph` | `{nodes: [{data: {id, label, campaign}}], edges: [{data: {source, target, weight, signals}}]}` |
-| `GET /api/datasets/{id}/timeline` | `{bucket_seconds, campaign_ids: [...], points: [{t, total, c1, c2, ...}]}` (Recharts-ready) |
+| `GET /api/datasets/{id}/timeline` | `{bucket_seconds, campaign_ids: [...], points: [{t, total, c1, c2, ...}]}` (drawn by the SVG timeline) |
 | `GET /api/datasets/{id}/campaigns/{cid}` | `Campaign` + `sample_posts` |
 | `POST /api/datasets/{id}/campaigns/{cid}/classify` | `{verdict: BobVerdict (legal IDs enriched with title + IPC), escalation: {level, actions}, cached: bool, cost}` |
 | `GET /api/datasets/{id}/brief` | full printable HTML page (calls Bob once for the executive summary, then cached) |
@@ -494,29 +495,27 @@ data/runs/<dataset_id>/
 
 ## 12. Frontend
 
-React 19 single-page app in `src/web/`, created with Vite (step-by-step setup in `execution-plan.md`). Four tabs, no router.
+React 19 single-page app in `src/web/`, built with Vite. The visual language, tokens and page layout are defined in [`design-system.md`](design-system.md). Four pages; the current page and dataset are kept in the URL (`#/overview/demo`), so reload and Back work.
 
-| Tab | Component(s) | Contents |
-|---|---|---|
-| **Upload** | `UploadPanel` | choose demo dataset or upload CSV; **Analyze** button with progress |
-| **Overview** | `StatTiles`, `TimelineChart`, `CampaignList` | tiles (posts, accounts, campaigns, highest threat); Recharts posts-per-minute timeline with campaign bursts shaded; ranked campaign list with score badges |
-| **Network** | `NetworkView`, `CampaignPanel`, `WhyFlagged`, `VerdictCard` | Cytoscape graph (`cose` layout) via `react-cytoscapejs`, nodes coloured by campaign and sized by degree; side panel: "why flagged" bars, sample posts, **Ask Bob** → verdict, legal suggestions and escalation badge |
-| **Brief** | `BriefView` | preview of the brief (iframe of `/api/datasets/{id}/brief`); **Open printable brief** opens it in a new tab, where the page's own Print button and print CSS produce the PDF |
+| Page | Contents |
+|---|---|
+| **Datasets** | upload box (formats listed) and a table of all datasets with status (Not analysed / Analysing step n of 10 / Ready / Failed) and Open, Analyse, Delete |
+| **Overview** | 4 key numbers (campaigns, urgent, alert, not assessed), activity timeline, campaign table with the selected campaign's detail beside it |
+| **Network** | Cytoscape graph coloured by campaign (selected campaign highlighted and labelled) with the same detail panel |
+| **Brief** | the printable brief in a frame, with Open in new tab and Print |
 
-Always visible: `BobStatusBanner` (from `/api/status`) when no API key is configured.
+The campaign detail panel shows identity, the coordination score with plain-language "why flagged" bars, the IBM Bob assessment (or the **Ask IBM Bob** button) and the first posts, marking the ones Bob cited. A dataset that is not analysed or is being analysed shows a state card with the step list and elapsed time instead of results.
 
 ```
-src/web/
-  package.json  vite.config.js  index.html
-  src/
-    main.jsx  App.jsx  api.js  index.css
-    mock/        status.json  datasets.json  analyze.json  graph.json  timeline.json  campaign.json  verdict.json  brief.html
-    components/  UploadPanel.jsx  StatTiles.jsx  TimelineChart.jsx  CampaignList.jsx  NetworkView.jsx
-                 CampaignPanel.jsx  WhyFlagged.jsx  VerdictCard.jsx  BriefView.jsx  BobStatusBanner.jsx
+src/web/src/
+  main.jsx  App.jsx (shell, routing, data loading, polling)  api.js  index.css (tokens)  ui.jsx (primitives)  labels.js (plain-language labels)
+  views/       DatasetsView.jsx  OverviewView.jsx  NetworkView.jsx  BriefView.jsx
+  components/  CampaignPanel.jsx  TimelineChart.jsx  NetworkGraph.jsx  AnalysisState.jsx
 ```
 
-- **State:** `App.jsx` holds `datasetId`, `campaigns`, `selectedCampaignId` and a `verdicts` map; props down, callbacks up.
-- **API layer:** `api.js` has one function per endpoint; with `VITE_USE_MOCK=true` it returns the files in `mock/`, so the UI is built before the backend exists.
+- **State:** `App.jsx` holds the dataset list, the current dataset's results and the selected campaign; the panel loads its own campaign details and cached verdict.
+- **Analysis:** `POST /analyze` starts a background job; the app polls `/api/datasets` every 1.5 s while any job runs.
+- **API layer:** `api.js` has one function per endpoint.
 - **Dev:** `npm run dev` (port 5173) with a Vite proxy for `/api` → `http://127.0.0.1:8000`.
 - **Demo / judges:** `npm run build` → `src/web/dist/`, served by FastAPI at `http://127.0.0.1:8000` (one process). `dist/` is gitignored, so the setup guide includes the build step.
 
@@ -672,7 +671,7 @@ Already done: `bob run` with an API key tested — works, ~0.025 coins and ~11 s
 | Risk | Mitigation |
 |---|---|
 | Bob coins run out | Classification is cheap (~0.025/call, measured); the risk is coding sessions — `/compact`, fresh sessions, check `/status`; cache verdicts; `--max-cost` |
-| Bob returns invalid JSON | Pydantic validation, extract the JSON object, one retry, "unverified" fallback |
+| Bob returns invalid JSON | Pydantic validation, extract the JSON object, one retry, then a clear error |
 | Bob suggests wrong or excessive legal sections | Fixed legal table with IDs; code drops unknown IDs (seen in testing: BNS 152 for a rumour) |
 | Bob refuses harsh mock content | Keep mock text mild and fictional; frame as analyst task |
 | `bob run` hangs on Windows | Never pass the prompt as a command-line argument — always stdin; `timeout=120` |
@@ -681,7 +680,7 @@ Already done: `bob run` with an API key tested — works, ~0.025 coins and ~11 s
 | No key on a judge's machine | App runs without a key; cached verdicts for the bundled demo run; setup guide explains |
 | Node too old for Bob | Node 24 on every laptop |
 | Toolkit slow on big data | Demo dataset ~5–10k posts; co-similarity only on demo sizes |
-| Integration breaks late | Fixed API contract + mock mode in the React app; test the full journey at each milestone; stop adding features well before the deadline |
+| Integration breaks late | Fixed API contract; test the full journey at each milestone; stop adding features well before the deadline |
 | Frontend build fails on a judge's machine | Setup guide pins `npm ci` + `npm run build`; Node 24 already required for Bob; tested on a clean machine |
 | Code accidentally gitignored | Never put code in a folder named `data/`, `build/` or `dist/`; check `git status` shows new files |
 | Validator red | Run it early; fill `submission.yaml` completely; real video link |

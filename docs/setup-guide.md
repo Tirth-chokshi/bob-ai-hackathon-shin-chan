@@ -132,14 +132,15 @@ cd src/web
 npm run dev
 ```
 
-Open **http://localhost:5173** — changes reload instantly and `/api` calls are proxied to the Python app on port 8000. To work on the UI without the backend, create `src/web/.env.local` with `VITE_USE_MOCK=true`.
+Open **http://localhost:5173** — changes reload instantly and `/api` calls are proxied to the Python app on port 8000.
 
 ### Verify it works
 
-1. **Upload** tab → choose the demo dataset → **Analyze**.
-2. **Overview** shows the planted campaigns ranked by CIB score; the cricket decoy ranks lowest.
-3. **Network** → click a campaign → **Ask Bob** returns a threat type, severity, legal suggestions and evidence post IDs (from the cache if no key is set).
-4. **Brief** → **Open printable brief** → the page's **Print** button produces the time-stamped threat brief as PDF.
+1. The app opens on **Overview** for the demo dataset: 4 campaigns ranked by coordination score, with 3 marked Urgent. The cricket decoy (C4) ranks lowest and is marked Monitor.
+2. Select a campaign: the panel shows why it was flagged, IBM Bob's saved assessment and its first posts.
+3. **Network** shows the same campaigns as a graph; click a dot to open its campaign.
+4. **Brief** → **Print or save as PDF** produces the time-stamped threat brief.
+5. Optional: **Datasets** → upload a CSV (for example `data/raw/ira_1.csv`). The analysis starts automatically and shows each step; the full IRA file takes about 5 minutes.
 
 ---
 

@@ -1,8 +1,13 @@
+import logging
 import os
 from pathlib import Path
+from typing import Callable
 import networkx as nx
 from coordination_network_toolkit import preprocess, graph, compute_networks as cn
+from coordination_network_toolkit.similarity import MinDocSizeSimilarity
 from engine.schema import Post
+
+log = logging.getLogger(__name__)
 
 NETWORKS = {
     "co_tweet": cn.compute_co_tweet_network,
@@ -11,13 +16,22 @@ NETWORKS = {
     "co_reply": cn.compute_co_reply_network,
     "co_retweet": cn.compute_co_retweet_parallel,
 }
+# progress labels shown in the UI, one per network
+NETWORK_STAGES = {
+    "co_tweet": "Network 1/5: same text",
+    "co_similar_tweet": "Network 2/5: similar text",
+    "co_link": "Network 3/5: same link",
+    "co_reply": "Network 4/5: replies to the same post",
+    "co_retweet": "Network 5/5: same retweet",
+}
 
 
 def build_graph(
     posts: list[Post],
     db_path: Path | str,
     window: int = 60,
-    min_weight: int = 2
+    min_weight: int = 2,
+    progress: Callable[[str], None] = lambda stage: None,
 ) -> nx.Graph:
     """Builds a multi-signal coordination network graph from posts."""
     db_path = str(db_path)
@@ -40,45 +54,21 @@ def build_graph(
         for p in posts
     ]
 
+    progress("Preparing coordination database")
     preprocess.preprocess_data(db_path, rows)
 
     # 2. Compute individual networks
-    # co_tweet
-    try:
-        cn.compute_co_tweet_network(db_path, time_window=window, min_edge_weight=min_weight, n_threads=1)
-    except Exception:
-        pass
-
-    # co_similar_tweet with similarity_threshold=0.8
-    try:
-        cn.compute_co_similar_tweet(
-            db_path,
-            time_window=window,
-            similarity_threshold=0.8,
-            min_edge_weight=min_weight,
-            n_threads=1
-        )
-    except Exception:
-        pass
-
-    # co_link
-    try:
-        cn.compute_co_link_network(db_path, time_window=window, min_edge_weight=min_weight, n_threads=1)
-    except Exception:
-        pass
-
-    # co_reply (replies often take slightly longer in campaigns, up to 300s window)
-    try:
-        reply_window = max(window, 300)
-        cn.compute_co_reply_network(db_path, time_window=reply_window, min_edge_weight=min_weight, n_threads=1)
-    except Exception:
-        pass
-
-    # co_retweet
-    try:
-        cn.compute_co_retweet_parallel(db_path, time_window=window, min_edge_weight=min_weight, n_threads=1)
-    except Exception:
-        pass
+    for net_name, compute in NETWORKS.items():
+        progress(NETWORK_STAGES[net_name])
+        # replies in a pile-on arrive over minutes, so co_reply gets a 300s window at least
+        net_window = max(window, 300) if net_name == "co_reply" else window
+        # MinDocSizeSimilarity skips posts under 5 words; the default similarity divides by zero on empty posts
+        extra = ({"similarity_threshold": 0.8, "similarity_function": MinDocSizeSimilarity(5)}
+                 if net_name == "co_similar_tweet" else {})
+        try:
+            compute(db_path, time_window=net_window, min_edge_weight=min_weight, n_threads=1, **extra)
+        except Exception:
+            log.exception("%s network failed; continuing without it", net_name)
 
     # 3. Merge into unified undirected graph
     G = nx.Graph()
@@ -90,6 +80,7 @@ def build_graph(
         try:
             sub_g = graph.load_networkx_graph(db_path, net_name)
         except Exception:
+            log.exception("could not load %s network", net_name)
             continue
 
         for u, v, data in sub_g.edges(data=True):

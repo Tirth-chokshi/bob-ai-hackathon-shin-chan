@@ -213,7 +213,9 @@ def generate(seed: int = 42) -> tuple[list[dict], dict]:
                 "account_created_at": camp_c_meta[acc]["created_at"]
             })
 
-    # 5. Campaign D — Decoy (Benign coordination: 60 established accounts, 1-6 years old, single 10-min celebratory burst)
+    # 5. Campaign D — Decoy (benign coordination: 60 established accounts, 1-6 years old).
+    # Fans post the same chants within minutes at three match moments, so they DO coordinate;
+    # the score has to rank them below the threat rings, and Bob should call them benign.
     camp_d_accounts = [f"d_{4000 + i}" for i in range(1, 61)]
     camp_d_meta = {}
     for acc in camp_d_accounts:
@@ -221,30 +223,38 @@ def generate(seed: int = 42) -> tuple[list[dict], dict]:
         c_at = t0 - (age_days * 86400) - rng.randint(1000, 40000)
         camp_d_meta[acc] = {"username": f"fan_{acc}", "created_at": c_at}
 
-    decoy_burst_time = t0 + 26 * 3600  # Hour 26
-    decoy_texts = [
-        "What a thrilling win! Sundarpur Strikers won the district cricket finals! #SundarpurStrikers",
-        "Sensational finish by the captain! Sundarpur Strikers champions of the tournament! #SundarpurStrikers",
-        "Proud moment for our city team! What an incredible victory! #SundarpurStrikers",
-        "Congratulations to Sundarpur Strikers for lifting the district trophy! Fantastic game! #SundarpurStrikers",
-        "Championship winners! Well deserved victory by Sundarpur Strikers today! #SundarpurStrikers"
+    decoy_moments = [  # (start, chants) — final whistle, trophy lift, open-bus parade
+        (t0 + 26 * 3600, [
+            "What a thrilling win! Sundarpur Strikers won the district cricket finals! #SundarpurStrikers",
+            "Sensational finish by the captain! Sundarpur Strikers are champions! #SundarpurStrikers",
+            "Proud moment for our city team! What an incredible victory! #SundarpurStrikers",
+        ]),
+        (t0 + 26 * 3600 + 1800, [
+            "Trophy lifted! Congratulations Sundarpur Strikers, district champions! #SundarpurStrikers",
+            "Our captain lifts the district trophy! Well deserved! #SundarpurStrikers",
+            "Champions of the district! Proud of every player today! #SundarpurStrikers",
+        ]),
+        (t0 + 27 * 3600 + 1800, [
+            "Open bus parade for Sundarpur Strikers at the Clock Tower now! Come cheer! #SundarpurStrikers",
+            "Whole town cheering the Strikers parade at the Clock Tower! #SundarpurStrikers",
+            "Crowds everywhere for our champions' victory parade! #SundarpurStrikers",
+        ]),
     ]
 
-    for acc in camp_d_accounts:
-        post_t = decoy_burst_time + rng.randint(0, 590)  # over ~10 min
-        msg = rng.choice(decoy_texts)
-        posts.append({
-            "post_id": next_post_id(),
-            "account_id": acc,
-            "username": camp_d_meta[acc]["username"],
-            "created_at": post_t,
-            "text": msg,
-            "repost_of": "",
-            "reply_to": "",
-            "urls": "",
-            "hashtags": "#SundarpurStrikers",
-            "account_created_at": camp_d_meta[acc]["created_at"]
-        })
+    for start, chants in decoy_moments:
+        for acc in camp_d_accounts:
+            posts.append({
+                "post_id": next_post_id(),
+                "account_id": acc,
+                "username": camp_d_meta[acc]["username"],
+                "created_at": start + rng.randint(0, 180),  # within 3 minutes
+                "text": rng.choice(chants),
+                "repost_of": "",
+                "reply_to": "",
+                "urls": "",
+                "hashtags": "#SundarpurStrikers",
+                "account_created_at": camp_d_meta[acc]["created_at"]
+            })
 
     # Sort all posts chronologically
     posts.sort(key=lambda x: (x["created_at"], x["post_id"]))
@@ -265,11 +275,12 @@ def generate(seed: int = 42) -> tuple[list[dict], dict]:
     return posts, truth
 
 
-def save_scenario():
+def save_scenario(seed: int = 42, out_csv: Path | None = None, out_truth: Path | None = None):
     SAMPLES_DIR.mkdir(parents=True, exist_ok=True)
-    posts, truth = generate(seed=42)
+    posts, truth = generate(seed=seed)
 
-    csv_path = SAMPLES_DIR / "scenario_posts.csv"
+    csv_path = out_csv or (SAMPLES_DIR / "scenario_posts.csv")
+    csv_path.parent.mkdir(parents=True, exist_ok=True)
     with open(csv_path, "w", newline="", encoding="utf-8") as f:
         fieldnames = [
             "post_id", "account_id", "username", "created_at",
@@ -280,7 +291,8 @@ def save_scenario():
         writer.writeheader()
         writer.writerows(posts)
 
-    truth_path = SAMPLES_DIR / "truth.json"
+    truth_path = out_truth or (SAMPLES_DIR / "truth.json")
+    truth_path.parent.mkdir(parents=True, exist_ok=True)
     with open(truth_path, "w", encoding="utf-8") as f:
         json.dump(truth, f, indent=2)
 
@@ -289,4 +301,12 @@ def save_scenario():
 
 
 if __name__ == "__main__":
-    save_scenario()
+    import argparse
+    parser = argparse.ArgumentParser(description="Generate synthetic social media threat scenario")
+    parser.add_argument("--seed", type=int, default=42, help="Random seed for generation")
+    parser.add_argument("--output", type=Path, default=None, help="Output CSV path")
+    parser.add_argument("--truth", type=Path, default=None, help="Output truth JSON path")
+    args = parser.parse_args()
+
+    save_scenario(seed=args.seed, out_csv=args.output, out_truth=args.truth)
+

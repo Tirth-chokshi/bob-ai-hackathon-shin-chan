@@ -46,9 +46,10 @@ graph TD
 | **Campaign Discovery & Scoring** | NetworkX, Python | Community detection on the merged graph; explainable per-feature CIB score. |
 | **Threat Analysis** | IBM Bob headless (`bob run --format json`), `BOB_API_KEY`, prompt via stdin | Classifies each campaign, extracts target and narrative, chooses legal-table IDs, cites evidence post IDs. Validated with Pydantic and cached as JSON (~0.025 Bobcoins, ~11 s per campaign in testing). |
 | **Legal Reference & Escalation** | `.bob/rules-osint-analyst/01-legal-table.md` + Python rules | One legal table (with IDs) used by Bob chat, embedded in prompts, and parsed to validate Bob's answers; deterministic escalation matrix (MONITOR / ALERT / URGENT). |
-| **Brief Summary** | IBM Bob headless (`bob run`) | Writes the brief's executive summary from verified verdicts only; cached per dataset. |
+| **Brief Summary** | IBM Bob headless (`bob run`) | Writes the brief's executive summary from verified verdicts only; cached per dataset and cleared when a verdict or the analysis changes. |
 | **IBM Bob MCP Server** | Python MCP SDK (FastMCP), registered in `.bob/mcp.json` | Read-only tools `list_campaigns`, `get_campaign`, `get_posts`, `timeline`, `account_profile` so officers can investigate from Bob chat (IBMid sign-in). |
-| **Command Center UI** | React 19 + Vite, Tailwind CSS, react-cytoscapejs (Cytoscape.js), Recharts | Upload, overview dashboard, posts-per-minute timeline, network graph coloured by campaign, "why flagged" panel, Bob verdict card, brief preview. Built to static files (`src/web/dist/`) and served by FastAPI. |
+| **Command Center UI** | React 19 + Vite, Tailwind CSS, Cytoscape.js (network graph), SVG timeline, lucide-react icons | Datasets (upload, status, progress), Overview (key numbers, timeline, campaign table + detail), Network (graph + detail), Brief. Design language in [`design-system.md`](design-system.md). Built to `src/web/dist/` and served by FastAPI. |
+| **Analysis jobs** | Python thread per dataset, in-memory job table | `POST /analyze` returns at once; the UI polls and shows the current step of 10 and elapsed time. |
 | **Threat Brief** | Markdown/HTML + print CSS | Time-stamped brief with SHA-256 hashes, timeline, evidence table, legal suggestions, recommended actions. |
 
 ---
@@ -65,11 +66,16 @@ sequenceDiagram
     participant Bob as IBM Bob
 
     Officer->>UI: Uploads a post batch
-    UI->>API: POST /api/datasets, POST /api/datasets/{id}/analyze
+    UI->>API: POST /api/datasets, POST /api/datasets/{id}/analyze (202, runs in background)
     API->>CIB: Build coordination networks, find campaigns, score them
-    CIB-->>API: Campaigns with scores and feature breakdown
+    loop every 1.5 s until done
+        UI->>API: GET /api/datasets (job step n of 10)
+    end
+    CIB-->>API: Campaigns, first posts per campaign, graph, timeline
     API-->>UI: Campaign list, timeline and graph data
-    Officer->>UI: Clicks "Ask Bob" on a campaign
+    Officer->>UI: Selects a campaign
+    UI->>API: GET /api/datasets/{id}/campaigns/{cid}/verdict (cached only, never calls Bob)
+    Officer->>UI: Clicks "Ask Bob" if not classified yet
     UI->>API: POST /api/datasets/{id}/campaigns/{cid}/classify
     API->>Bob: bob run --format json (stdin: rules + schema + stats + posts)
     Bob-->>API: JSON: threat type, severity, legal-table IDs, evidence IDs

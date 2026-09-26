@@ -8,7 +8,7 @@ This directory houses the complete implementation of the **Social Media Threat I
 src/
 ├── api/                  # FastAPI backend application
 │   ├── __init__.py
-│   └── main.py           # REST endpoints (/api/status, /datasets, /graph, /timeline, /campaigns, /classify, /brief)
+│   └── main.py           # REST endpoints (datasets, background analysis jobs, campaigns, verdict, classify, brief)
 ├── bob/                  # IBM Bob integration & legal reasoning
 │   ├── __init__.py
 │   ├── client.py         # Headless CLI invocation (`bob run`), JSON schema parsing & validation
@@ -33,7 +33,7 @@ src/
 │   └── server.py         # FastMCP tools (list_datasets, list_campaigns, get_campaign, get_posts, timeline, account_profile)
 ├── samples/              # Committed scenario data & demo bundle
 │   ├── demo_run/         # Pre-analyzed demo bundle with cached Bob verdicts
-│   ├── scenario_posts.csv# 4,538 synthetic Sundarpur posts
+│   ├── scenario_posts.csv# 4,658 synthetic Sundarpur posts
 │   └── truth.json        # Ground-truth labels for planted campaigns
 ├── scenario/             # Dataset generation & format adapters
 │   ├── __init__.py
@@ -41,10 +41,12 @@ src/
 │   └── adapters/         # Adapters for X/Twitter IO archives and FiveThirtyEight IRA trolls
 ├── tests/                # Automated verification
 │   ├── conftest.py
-│   └── test_engine.py    # Pytest suite verifying graph, Louvain detection, and decoy ranking
+│   ├── test_engine.py    # Scenario: every planted ring and the decoy are detected, decoy scores lowest
+│   ├── test_bob_validation.py # Bob answers: legal-table whitelist, evidence IDs, schema rejection
+│   └── test_api.py       # Upload → background analysis → campaigns → delete, through the API
 ├── web/                  # Production React 19 + Vite frontend
-│   ├── dist/             # Production static bundle (served automatically by FastAPI)
-│   ├── src/              # React components (Navbar, UploadPanel, NetworkGraph, TimelineChart, CampaignPanel, VerdictCard, BriefView)
+│   ├── dist/             # Built by `npm run build` (gitignored), served by FastAPI
+│   ├── src/              # App shell, views/ (Datasets, Overview, Network, Brief), components/, ui.jsx, design tokens (docs/design-system.md)
 │   └── package.json
 ├── config.py             # Centralized environment & path configuration
 ├── main.py               # Single entrypoint launching Uvicorn web server
@@ -53,9 +55,10 @@ src/
 
 ## Setup & Running
 
-### 1. Python Environment Setup
+### 1. Install
 ```bash
 pip install -r src/requirements.txt
+cd src/web && npm ci && npm run build && cd ../..
 ```
 
 ### 2. Configure Environment
@@ -68,7 +71,7 @@ cp src/.env.example src/.env
 ```bash
 python src/main.py
 ```
-Open **http://127.0.0.1:8000** in your browser. The pre-analyzed demo dataset loads immediately with multi-signal coordination graphs, interactive activity timeline, explainable CIB risk scores, and cached IBM Bob legal verdicts.
+Open **http://127.0.0.1:8000** in your browser. The pre-analysed demo dataset loads immediately with cached IBM Bob verdicts.
 
 ### 4. Run Automated Tests
 ```bash
