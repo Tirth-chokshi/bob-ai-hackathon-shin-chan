@@ -54,7 +54,10 @@ cp src/.env.example src/.env
 ### 3. Install Dependencies
 
 ```bash
-pip install -r src/requirements.txt
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install --upgrade pip
+python -m pip install -r src/requirements.txt
 ```
 
 ---
@@ -62,6 +65,7 @@ pip install -r src/requirements.txt
 ## Running the Application
 
 ```bash
+source .venv/bin/activate
 python src/main.py
 ```
 
@@ -71,5 +75,5 @@ python src/main.py
 
 | Issue | Solution |
 |---|---|
-| Missing dependencies | Run `pip install -r src/requirements.txt` |
+| Missing dependencies | Activate `.venv` and run `python -m pip install -r src/requirements.txt` |
 | Python version error | Ensure Python 3.10+ is installed and active in your terminal |

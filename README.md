@@ -11,7 +11,7 @@
 | **Team Name** | Shin-chan |
 | **Track** | AI (Cyber Forensics / Problem Statement 06) |
 | **Team Lead** | Tirth Chokshi — chokshitirth4@gmail.com |
-| **Members** |  | Milind Pawar, Jainik Devada, Jigar Jariwala |
+| **Members** | Milind Pawar, Jainik Devada, Jigar Jariwala |
 
 ---
 
@@ -93,8 +93,11 @@ cd bob-ai-hackathon-shin-chan
 # 2. Configure environment
 cp src/.env.example src/.env
 
-# 3. Install dependencies
-pip install -r src/requirements.txt
+# 3. Create a virtual environment and install dependencies
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install --upgrade pip
+python -m pip install -r src/requirements.txt
 
 # 4. Run the project
 python src/main.py
