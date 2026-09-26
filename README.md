@@ -11,7 +11,7 @@
 | **Team Name** | Shin-chan |
 | **Track** | AI (Cyber Forensics / Problem Statement 06) |
 | **Team Lead** | Tirth Chokshi — chokshitirth4@gmail.com |
-| **Members** |  |
+| **Members** |  | Milind Pawar, Jainik Devada, Jigar Jariwala |
 
 ---
 
