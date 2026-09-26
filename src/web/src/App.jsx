@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react'
-import { ShieldCheck } from 'lucide-react'
+import { Moon, ShieldCheck, Sun } from 'lucide-react'
 import { api } from './api'
 import { Banner, Button, PageHeader, Spinner } from './ui'
 import { fmt } from './labels'
@@ -18,6 +18,16 @@ const VIEWS = [
 ]
 const EMPTY = { campaigns: null, graph: null, timeline: null }
 
+function getInitialTheme() {
+  try {
+    const saved = localStorage.getItem('theme')
+    if (saved === 'dark' || saved === 'light') return saved
+    return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
+  } catch (_) {
+    return 'light'
+  }
+}
+
 // Location is kept in the URL (#/view/dataset/campaign) so a reload or a shared link opens the same place
 function readHash() {
   const [view, datasetId, campaignId] = window.location.hash.replace(/^#\/?/, '').split('/')
@@ -25,6 +35,7 @@ function readHash() {
 }
 
 export default function App() {
+  const [theme, setTheme] = useState(getInitialTheme)
   const [view, setView] = useState(() => readHash().view)
   const [datasetId, setDatasetId] = useState(() => readHash().datasetId)
   const [datasets, setDatasets] = useState(null) // null while loading
@@ -33,6 +44,16 @@ export default function App() {
   const [selectedId, setSelectedId] = useState(null)
   const [error, setError] = useState(null)
   const wantedCampaign = useRef(readHash().campaignId) // from the URL, applied once results load
+
+  useEffect(() => {
+    document.documentElement.setAttribute('data-theme', theme)
+    document.documentElement.classList.toggle('dark', theme === 'dark')
+    try {
+      localStorage.setItem('theme', theme)
+    } catch (_) {}
+  }, [theme])
+
+  const toggleTheme = () => setTheme((t) => (t === 'dark' ? 'light' : 'dark'))
 
   // state → URL (adds a history entry, so Back works) and URL → state (Back/Forward, edited links)
   useEffect(() => {
@@ -150,7 +171,7 @@ export default function App() {
     if (needsAnalysis(dataset)) body = <AnalysisState dataset={dataset} onAnalyze={analyse} />
     else if (!data.campaigns) body = <div className="flex items-center justify-center gap-2 py-24 text-sm text-muted"><Spinner />Loading results…</div>
     else if (view === 'overview') body = <OverviewView data={data} selectedId={selectedId} onSelect={setSelectedId} panel={panel} />
-    else if (view === 'network') body = <NetworkView data={data} selectedId={selectedId} onSelect={setSelectedId} panel={panel} />
+    else if (view === 'network') body = <NetworkView data={data} selectedId={selectedId} onSelect={setSelectedId} panel={panel} theme={theme} />
     else body = <BriefView key={`${dataset.id}-${assessedCount}`} url={`${api.briefUrl(dataset.id)}?v=${assessedCount}`} />
 
     return <><PageHeader title={title} subtitle={subtitle} action={rerun} />{body}</>
@@ -191,6 +212,15 @@ export default function App() {
               <span className={`w-2 h-2 rounded-full ${bobConfigured ? 'bg-benign' : 'bg-faint'}`} />
               {bobConfigured ? 'IBM Bob ready' : 'IBM Bob: saved results only'}
             </span>
+            <button
+              type="button"
+              onClick={toggleTheme}
+              className="inline-flex items-center justify-center w-8 h-8 rounded-md border border-line bg-surface text-ink hover:bg-subtle transition-colors cursor-pointer"
+              title={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
+              aria-label={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
+            >
+              {theme === 'dark' ? <Sun className="w-4 h-4 text-alert" /> : <Moon className="w-4 h-4 text-muted" />}
+            </button>
           </div>
         </div>
       </header>

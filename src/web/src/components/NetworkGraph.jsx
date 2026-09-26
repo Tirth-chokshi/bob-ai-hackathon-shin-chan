@@ -5,7 +5,7 @@ import { Button } from '../ui'
 import { campaignColor } from '../labels'
 
 // Accounts (dots) joined when they repeatedly acted together; coloured by campaign
-export function NetworkGraph({ graph, campaigns, selectedId, onSelect }) {
+export function NetworkGraph({ graph, campaigns, selectedId, onSelect, theme }) {
   const containerRef = useRef(null)
   const cyRef = useRef(null)
   // the graph is built once per dataset, so read the latest click handler through a ref
@@ -61,7 +61,7 @@ export function NetworkGraph({ graph, campaigns, selectedId, onSelect }) {
     cy.on('mouseout', 'node', (e) => e.target.hasClass('member') || e.target.removeClass('labelled'))
     cyRef.current = cy
     return () => cy.destroy()
-  }, [graph])
+  }, [graph, theme])
 
   // Highlight the selected campaign and label its accounts
   useEffect(() => {

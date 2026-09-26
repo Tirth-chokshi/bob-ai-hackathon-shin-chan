@@ -5,7 +5,7 @@ import { NetworkGraph } from '../components/NetworkGraph'
 import { fmt } from '../labels'
 
 // Who coordinates with whom: graph on the left, the same campaign detail as Overview on the right
-export function NetworkView({ data, selectedId, onSelect, panel }) {
+export function NetworkView({ data, selectedId, onSelect, panel, theme }) {
   const { graph, campaigns } = data
   if (graph.nodes.length === 0) {
     return (
@@ -18,7 +18,7 @@ export function NetworkView({ data, selectedId, onSelect, panel }) {
     <div className="grid gap-4 lg:grid-cols-12 items-start">
       <Card title="Coordination network" className="lg:col-span-8" bodyClassName=""
         subtitle={`${fmt(graph.nodes.length)} accounts, ${fmt(graph.edges.length)} links. A line means two accounts repeatedly acted together within seconds. Click a dot to open its campaign.`}>
-        <NetworkGraph graph={graph} campaigns={campaigns} selectedId={selectedId} onSelect={onSelect} />
+        <NetworkGraph graph={graph} campaigns={campaigns} selectedId={selectedId} onSelect={onSelect} theme={theme} />
       </Card>
       <div className="lg:col-span-4 lg:sticky lg:top-[72px] lg:max-h-[calc(100vh-88px)] lg:overflow-y-auto">
         {panel}
