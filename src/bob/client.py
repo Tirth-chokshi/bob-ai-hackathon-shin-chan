@@ -6,8 +6,12 @@ import subprocess
 import tempfile
 from pathlib import Path
 from config import BOB_API_KEY, BOB_MAX_COST, BOB_RULES
-from engine.schema import Campaign, Post, BobVerdict, LegalSuggestion
+from engine.schema import Campaign, Post, BobVerdict
 from bob.legal import load_legal_table, allowed_offence_ids
+
+
+class BobNotConfigured(Exception):
+    pass
 
 
 def get_bob_cmd() -> list[str]:
@@ -21,8 +25,13 @@ def get_bob_cmd() -> list[str]:
     return ["bob"]
 
 
-def run_bob(prompt: str, work_dir: Path | str, max_cost: str = BOB_MAX_COST) -> tuple[str, float]:
-    """Runs a headless Bob inference call via CLI with JSON output format."""
+def run_bob(
+    prompt: str,
+    work_dir: Path | str,
+    instruction: str = "Classify the campaign described on stdin. Follow its instructions exactly.",
+    max_cost: str = BOB_MAX_COST,
+) -> tuple[str, float]:
+    """Runs a headless Bob inference call via CLI with JSON output format. The prompt goes via stdin."""
     bob_cmd = get_bob_cmd()
     cmd = [
         *bob_cmd,
@@ -36,7 +45,7 @@ def run_bob(prompt: str, work_dir: Path | str, max_cost: str = BOB_MAX_COST) -> 
         str(max_cost),
         "--disable-mcp",
         "--disable-subagents",
-        "Classify the campaign described on stdin. Follow its instructions exactly."
+        instruction,
     ]
 
     env = {**os.environ}
@@ -57,13 +66,16 @@ def run_bob(prompt: str, work_dir: Path | str, max_cost: str = BOB_MAX_COST) -> 
     if res.returncode != 0:
         raise RuntimeError(f"Bob execution failed (exit code {res.returncode}): {res.stderr}")
 
+    # One JSON object, or one event per line (e.g. an error event before the result)
     try:
-        data = json.loads(res.stdout)
-        last_message = data.get("last_message", "")
-        cost = float(data.get("stats", {}).get("session_costs", 0.0))
-        return last_message, cost
-    except Exception as e:
-        raise ValueError(f"Failed to parse Bob JSON response: {e}\nRaw stdout: {res.stdout[:500]}")
+        events = [json.loads(res.stdout)]
+    except json.JSONDecodeError:
+        events = [json.loads(line) for line in res.stdout.splitlines() if line.strip()]
+    errors = [e.get("message", "") for e in events if e.get("type") == "error"]
+    result = next((e for e in reversed(events) if "last_message" in e), None)
+    if errors or not result:
+        raise RuntimeError(f"Bob run failed: {'; '.join(errors) or res.stdout[:500]}")
+    return result["last_message"], float(result.get("stats", {}).get("session_costs", 0.0))
 
 
 def extract_json(text: str) -> dict:
@@ -136,6 +148,26 @@ Do NOT output any markdown wrappers, conversational greetings, or notes. ONLY JS
     return prompt
 
 
+def cached_verdict(run_dir: Path, campaign_id: str) -> BobVerdict | None:
+    path = Path(run_dir) / "bob" / f"{campaign_id}.json"
+    return BobVerdict.model_validate_json(path.read_text(encoding="utf-8")) if path.exists() else None
+
+
+def validate_verdict(data: dict, campaign: Campaign, legal_table: dict) -> BobVerdict:
+    """Schema-check Bob's answer, keep only offence IDs from our legal table and post IDs from this campaign."""
+    verdict = BobVerdict.model_validate(data)
+    verdict.legal_suggestions = [
+        s.model_copy(update={k: legal_table[s.id][k] for k in ("title", "law", "ipc")})
+        for s in verdict.legal_suggestions
+        if legal_table.get(s.id, {}).get("kind") == "offence"
+    ]
+    campaign_post_ids = set(campaign.post_ids)
+    verdict.evidence_post_ids = [pid for pid in verdict.evidence_post_ids if pid in campaign_post_ids]
+    if not verdict.evidence_post_ids:
+        raise ValueError("no evidence post IDs from this campaign")
+    return verdict
+
+
 def classify(
     run_dir: Path,
     campaign: Campaign,
@@ -144,92 +176,35 @@ def classify(
     """
     Classifies a coordinated campaign using IBM Bob with schema validation,
     legal table filtering, and disk caching.
-    Returns (verdict, cost, is_cached).
+    Returns (verdict, cost, is_cached). Raises instead of guessing if Bob gives no valid answer.
     """
     run_dir = Path(run_dir)
-    cache_dir = run_dir / "bob"
-    cache_dir.mkdir(parents=True, exist_ok=True)
-    cache_path = cache_dir / f"{campaign.id}.json"
+    verdict = cached_verdict(run_dir, campaign.id)
+    if verdict:
+        return verdict, 0.0, True
 
-    # 1. Return cached verdict if present
-    if cache_path.exists():
-        with open(cache_path, "r", encoding="utf-8") as f:
-            data = json.load(f)
-            return BobVerdict.model_validate(data), 0.0, True
-
-    # Check API key
     if not BOB_API_KEY:
-        raise ValueError("IBM Bob API key is not configured and no cached verdict exists.")
+        raise BobNotConfigured("IBM Bob API key is not configured and no cached verdict exists.")
 
-    allowed_ids = allowed_offence_ids()
     legal_table = load_legal_table()
-    prompt = build_classification_prompt(campaign, sample_posts, allowed_ids)
+    prompt = build_classification_prompt(campaign, sample_posts, allowed_offence_ids())
 
-    # 2. Call Bob with retry logic
-    parsed_json = None
-    cost = 0.0
-    verified = True
-
+    cost, error = 0.0, None
     with tempfile.TemporaryDirectory() as tmp_dir:
-        for attempt in range(2):
+        for _ in range(2):
             try:
                 raw_resp, call_cost = run_bob(prompt, work_dir=tmp_dir)
                 cost += call_cost
-                parsed_json = extract_json(raw_resp)
+                verdict = validate_verdict(extract_json(raw_resp), campaign, legal_table)
                 break
-            except Exception:
-                if attempt == 1:
-                    verified = False
+            except Exception as e:  # Bob error, bad JSON or failed validation: retry once
+                error = e
+        else:
+            raise RuntimeError(f"IBM Bob did not return a valid verdict: {error}")
 
-    if not parsed_json:
-        # Fallback heuristic verdict if parsing completely failed
-        parsed_json = {
-            "threat_type": "organized_misinformation" if campaign.score >= 70 else "benign_coordination",
-            "target": "General public",
-            "narrative": f"Suspicious activity detected around {campaign.top_hashtag}",
-            "severity": 3,
-            "offline_call_to_action": False,
-            "legal_suggestions": [],
-            "evidence_post_ids": [p.post_id for p in sample_posts[:3]],
-        }
-        verified = False
-
-    # 3. Filter legal suggestions to allowed offence IDs and enrich with law/ipc/title
-    valid_suggestions = []
-    for sug in parsed_json.get("legal_suggestions", []):
-        sug_id = sug.get("id")
-        if sug_id in legal_table and legal_table[sug_id]["kind"] == "offence":
-            info = legal_table[sug_id]
-            valid_suggestions.append(LegalSuggestion(
-                id=sug_id,
-                why=sug.get("why", "Associated with coordinated activity"),
-                title=info["title"],
-                law=info["law"],
-                ipc=info["ipc"]
-            ))
-
-    # 4. Filter evidence post IDs to those belonging to the campaign
-    campaign_post_set = set(campaign.post_ids) | {p.post_id for p in sample_posts}
-    valid_evidence = [
-        pid for pid in parsed_json.get("evidence_post_ids", [])
-        if pid in campaign_post_set
-    ]
-    if not valid_evidence and sample_posts:
-        valid_evidence = [sample_posts[0].post_id]
-
-    verdict = BobVerdict(
-        threat_type=parsed_json.get("threat_type", "organized_misinformation"),
-        target=parsed_json.get("target", "Public"),
-        narrative=parsed_json.get("narrative", ""),
-        severity=int(parsed_json.get("severity", 3)),
-        offline_call_to_action=bool(parsed_json.get("offline_call_to_action", False)),
-        legal_suggestions=valid_suggestions,
-        evidence_post_ids=valid_evidence,
-        verified=verified
-    )
-
-    # 5. Save to disk cache
-    with open(cache_path, "w", encoding="utf-8") as f:
-        json.dump(verdict.model_dump(), f, indent=2)
-
+    bob_dir = run_dir / "bob"
+    bob_dir.mkdir(parents=True, exist_ok=True)
+    (bob_dir / f"{campaign.id}.json").write_text(verdict.model_dump_json(indent=2), encoding="utf-8")
+    # the brief summary was written from the old verdicts
+    (bob_dir / "summary.json").unlink(missing_ok=True)
     return verdict, cost, False

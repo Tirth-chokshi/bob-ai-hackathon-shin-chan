@@ -44,8 +44,3 @@ def allowed_offence_ids(path: Path | None = None) -> list[str]:
     table = load_legal_table(path)
     return [sec_id for sec_id, info in table.items() if info["kind"] == "offence"]
 
-
-def allowed_procedural_ids(path: Path | None = None) -> list[str]:
-    """Returns all IDs of kind 'procedural'."""
-    table = load_legal_table(path)
-    return [sec_id for sec_id, info in table.items() if info["kind"] == "procedural"]

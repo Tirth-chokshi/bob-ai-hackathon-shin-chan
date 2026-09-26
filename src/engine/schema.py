@@ -53,8 +53,7 @@ class BobVerdict(BaseModel):
     ]
     target: str
     narrative: str
-    severity: int                        # 1-5
+    severity: int = Field(ge=1, le=5)
     offline_call_to_action: bool
     legal_suggestions: list[LegalSuggestion]
     evidence_post_ids: list[str]
-    verified: bool = True                # False if retry also failed validation

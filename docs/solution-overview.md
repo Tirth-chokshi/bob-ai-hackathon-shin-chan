@@ -51,7 +51,7 @@ The core idea is **behaviour first, content second**: we first find accounts tha
      - `TARGETED_HARASSMENT`: coordinated abuse of a person or group.
      - `BENIGN_COORDINATION`: fan clubs, news sharing, organic protest organizing — coordination that is not a threat.
 
-   Every post ID Bob cites is checked in code against the campaign; output that fails validation twice is marked unverified. Results are cached, so each campaign is analysed once.
+   Every post ID Bob cites is checked in code against the campaign; output that fails validation twice is rejected with an error; nothing is guessed or cached. Results are cached, so each campaign is analysed once.
 6. **Legal Suggestions (for verification):** Bob may only choose from a fixed, checked table of sections, by ID; any other section is dropped in code. In testing, free-form answers included over-serious or misdescribed sections, which is why the table is fixed.
      - **BNS 196 (IPC 153A):** Promoting enmity between groups.
      - **BNS 197 (IPC 153B):** Imputations prejudicial to national integration.

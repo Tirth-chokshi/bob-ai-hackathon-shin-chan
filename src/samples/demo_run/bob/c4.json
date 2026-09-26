@@ -1,0 +1,20 @@
+{
+  "threat_type": "benign_coordination",
+  "target": "none — content celebrates a local cricket team victory",
+  "narrative": "Coordinated fan accounts amplifying celebratory posts about the Sundarpur Strikers winning a district cricket final, using near-identical or duplicate text across multiple accounts.",
+  "severity": 1,
+  "offline_call_to_action": false,
+  "legal_suggestions": [],
+  "evidence_post_ids": [
+    "p04530",
+    "p04486",
+    "p04498",
+    "p04484",
+    "p04516",
+    "p04488",
+    "p04528",
+    "p04495",
+    "p04485",
+    "p04500"
+  ]
+}

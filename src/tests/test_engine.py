@@ -54,11 +54,12 @@ def test_scenario_analysis(tmp_path: Path):
         top_camp = camp_by_id[top_camp_id]
         assert top_camp["score"] >= 70, f"Group {group} score {top_camp['score']} is too low"
 
-    # 3. Check Decoy D scores lowest
+    # 3. Decoy D (benign fan chants) is detected as coordination but scores lowest
     d_accs = truth["D"]
     d_camps = [camp_by_id[acc_to_camp[acc]] for acc in d_accs if acc in acc_to_camp]
-    d_max_score = max((c["score"] for c in d_camps), default=0)
-    
+    assert len(d_camps) >= 0.8 * len(d_accs), "Decoy should be detected, otherwise 'ranks lowest' proves nothing"
+    d_max_score = max(c["score"] for c in d_camps)
+
     # A, B, C minimum score
     abc_camps = [
         camp_by_id[acc_to_camp[acc]]

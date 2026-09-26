@@ -73,20 +73,14 @@ def score_campaign(
         toks = set(p.text.lower().split())
         post_tokens.append((p.post_id, p.account_id, toks))
 
-    dup_count = 0
-    # Optimize: check across accounts
-    for i, (pid1, acc1, toks1) in enumerate(post_tokens):
-        is_dup = False
-        for j, (pid2, acc2, toks2) in enumerate(post_tokens):
-            if i == j or acc1 == acc2:
-                continue
-            if compute_jaccard(toks1, toks2) >= 0.8:
-                is_dup = True
-                break
-        if is_dup:
-            dup_count += 1
-
-    duplication_val = dup_count / len(campaign_posts) if campaign_posts else 0.0
+    # ponytail: each checked post is compared with every campaign post; campaigns of 1,000+ posts
+    # are estimated from ~500 evenly spaced posts (exact below that). Index by token if this gets slow.
+    checked = post_tokens[::max(1, len(post_tokens) // 500)]
+    dup_count = sum(
+        1 for _, acc1, toks1 in checked
+        if any(acc1 != acc2 and compute_jaccard(toks1, toks2) >= 0.8 for _, acc2, toks2 in post_tokens)
+    )
+    duplication_val = dup_count / len(checked)
 
     # 3. MULTI-SIGNAL
     num_signals = len(signals)

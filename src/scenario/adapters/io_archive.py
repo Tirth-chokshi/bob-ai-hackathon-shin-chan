@@ -58,11 +58,13 @@ def load_io_archive(path: str | Path, limit: int | None = None) -> list[Post]:
             if limit is not None and i >= limit:
                 break
             
+            if not row.get("tweet_time"):
+                continue  # truncated row (our sample is a byte-range slice of the archive)
             post_id = row.get("tweetid") or f"io_{i}"
             account_id = row.get("userid") or "unknown_user"
             username = row.get("user_screen_name") or account_id
             created_at = parse_timestamp(row.get("tweet_time", "")) or 0
-            text = row.get("tweet_text", "")
+            text = row.get("tweet_text") or ""
             repost_of = row.get("retweet_tweetid") or None
             if repost_of == "":
                 repost_of = None

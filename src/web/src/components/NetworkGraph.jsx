@@ -1,213 +1,104 @@
 import React, { useEffect, useRef } from 'react'
 import cytoscape from 'cytoscape'
-import { ZoomIn, ZoomOut, Maximize2, RefreshCw } from 'lucide-react'
+import { Maximize2, ZoomIn, ZoomOut } from 'lucide-react'
+import { Button } from '../ui'
+import { campaignColor } from '../labels'
 
-const CAMPAIGN_COLORS = {
-  c1: '#8b5cf6', // Violet
-  c2: '#ec4899', // Pink
-  c3: '#f59e0b', // Amber
-  c4: '#10b981', // Emerald
-  c5: '#06b6d4', // Cyan
-}
-
-export function NetworkGraph({ graphData, selectedCampaignId, onSelectCampaign }) {
+// Accounts (dots) joined when they repeatedly acted together; coloured by campaign
+export function NetworkGraph({ graph, campaigns, selectedId, onSelect }) {
   const containerRef = useRef(null)
   const cyRef = useRef(null)
+  // the graph is built once per dataset, so read the latest click handler through a ref
+  const onSelectRef = useRef(onSelect)
+  onSelectRef.current = onSelect
 
   useEffect(() => {
-    if (!containerRef.current || !graphData || !graphData.nodes) return
-
-    // Transform elements for Cytoscape
-    const elements = [
-      ...graphData.nodes.map((n) => ({
-        group: 'nodes',
-        data: n.data,
-      })),
-      ...graphData.edges.map((e) => ({
-        group: 'edges',
-        data: e.data,
-      })),
-    ]
-
+    if (!containerRef.current) return
+    const token = (name) => getComputedStyle(document.documentElement).getPropertyValue(name).trim()
+    const size = (n) => Math.min(28, 8 + Math.sqrt(n.data('degree') || 1) * 2.5)
     const cy = cytoscape({
       container: containerRef.current,
-      elements: elements,
-      boxSelectionEnabled: false,
-      autounselectify: false,
-      layout: {
-        name: 'cose',
-        animate: false,
-        randomize: false,
-        componentSpacing: 100,
-        nodeOverlap: 20,
-        idealEdgeLength: 60,
-        edgeElasticity: 100,
-        nestingFactor: 5,
-        gravity: 80,
-        numIter: 300,
-      },
+      elements: [
+        ...graph.nodes.map((n) => ({ group: 'nodes', data: n.data })),
+        ...graph.edges.map((e) => ({ group: 'edges', data: e.data })),
+      ],
+      layout: { name: 'cose', animate: false, randomize: false, idealEdgeLength: 60, nodeOverlap: 20, gravity: 80, numIter: 500 },
+      minZoom: 0.2,
+      maxZoom: 3,
       style: [
         {
           selector: 'node',
           style: {
-            'background-color': (ele) => {
-              const camp = ele.data('campaign')
-              return camp ? CAMPAIGN_COLORS[camp] || '#6366f1' : '#475569'
-            },
-            width: (ele) => Math.min(32, Math.max(12, 10 + (ele.data('degree') || 1) * 0.8)),
-            height: (ele) => Math.min(32, Math.max(12, 10 + (ele.data('degree') || 1) * 0.8)),
+            'background-color': (n) => (n.data('campaign') ? campaignColor(n.data('campaign')) : token('--faint')),
+            width: size,
+            height: size,
+            'border-width': 1,
+            'border-color': token('--surface'),
+          },
+        },
+        {
+          selector: 'node.labelled',
+          style: {
             label: 'data(label)',
-            color: '#cbd5e1',
-            'font-size': '9px',
-            'font-family': 'monospace',
+            'font-size': 9,
+            color: token('--ink'),
             'text-valign': 'bottom',
-            'text-margin-y': 4,
-            'text-outline-width': 1.5,
-            'text-outline-color': '#020617',
+            'text-margin-y': 3,
+            'text-background-color': token('--surface'),
+            'text-background-opacity': 0.85,
+            'text-background-padding': 1,
           },
         },
-        {
-          selector: 'edge',
-          style: {
-            width: (ele) => Math.min(4, Math.max(1, (ele.data('weight') || 1) * 0.5)),
-            'line-color': '#334155',
-            'curve-style': 'bezier',
-            opacity: 0.6,
-          },
-        },
-        {
-          selector: 'node:selected',
-          style: {
-            'border-width': 3,
-            'border-color': '#ffffff',
-            'border-opacity': 0.9,
-          },
-        },
+        { selector: 'edge', style: { width: 1, 'line-color': token('--line'), 'curve-style': 'haystack' } },
+        { selector: '.dim', style: { opacity: 0.12 } },
       ],
     })
-
-    cy.on('tap', 'node', (evt) => {
-      const camp = evt.target.data('campaign')
-      if (camp && onSelectCampaign) {
-        onSelectCampaign(camp)
-      }
+    cy.on('tap', 'node', (e) => {
+      const cid = e.target.data('campaign')
+      if (cid) onSelectRef.current(cid)
     })
-
+    cy.on('mouseover', 'node', (e) => e.target.addClass('labelled'))
+    cy.on('mouseout', 'node', (e) => e.target.hasClass('member') || e.target.removeClass('labelled'))
     cyRef.current = cy
+    return () => cy.destroy()
+  }, [graph])
 
-    return () => {
-      cy.destroy()
-    }
-  }, [graphData])
-
-  // Highlight selected campaign nodes
+  // Highlight the selected campaign and label its accounts
   useEffect(() => {
-    if (!cyRef.current) return
     const cy = cyRef.current
-
+    if (!cy) return
     cy.batch(() => {
-      cy.nodes().forEach((node) => {
-        const camp = node.data('campaign')
-        if (selectedCampaignId) {
-          if (camp === selectedCampaignId) {
-            node.style('opacity', 1)
-            node.style('border-width', 2)
-            node.style('border-color', '#ffffff')
-          } else {
-            node.style('opacity', 0.25)
-            node.style('border-width', 0)
-          }
-        } else {
-          node.style('opacity', 1)
-          node.style('border-width', 0)
-        }
-      })
-
-      cy.edges().forEach((edge) => {
-        if (selectedCampaignId) {
-          const srcCamp = edge.source().data('campaign')
-          const tgtCamp = edge.target().data('campaign')
-          if (srcCamp === selectedCampaignId && tgtCamp === selectedCampaignId) {
-            edge.style('opacity', 0.8)
-            edge.style('line-color', CAMPAIGN_COLORS[selectedCampaignId] || '#6366f1')
-          } else {
-            edge.style('opacity', 0.05)
-            edge.style('line-color', '#334155')
-          }
-        } else {
-          edge.style('opacity', 0.6)
-          edge.style('line-color', '#334155')
-        }
-      })
+      cy.elements().removeClass('dim labelled member')
+      if (!selectedId) return
+      const members = cy.nodes().filter((n) => n.data('campaign') === selectedId)
+      members.addClass('labelled member')
+      cy.elements().not(members.union(members.edgesWith(members))).addClass('dim')
     })
-  }, [selectedCampaignId])
+  }, [selectedId, graph])
 
-  const handleZoomIn = () => cyRef.current && cyRef.current.zoom(cyRef.current.zoom() * 1.25)
-  const handleZoomOut = () => cyRef.current && cyRef.current.zoom(cyRef.current.zoom() * 0.8)
-  const handleFit = () => cyRef.current && cyRef.current.fit(undefined, 30)
-  const handleResetLayout = () => {
-    if (!cyRef.current) return
-    cyRef.current.layout({ name: 'cose', animate: true, animationDuration: 500 }).run()
+  const zoom = (factor) => {
+    const cy = cyRef.current
+    cy.zoom({ level: cy.zoom() * factor, renderedPosition: { x: cy.width() / 2, y: cy.height() / 2 } })
   }
 
   return (
-    <div className="relative w-full h-[620px] rounded-2xl bg-slate-950/80 border border-slate-800 overflow-hidden shadow-2xl">
-      {/* Cytoscape Container */}
-      <div ref={containerRef} className="w-full h-full cursor-grab active:cursor-grabbing" />
-
-      {/* Floating Toolbar Controls */}
-      <div className="absolute top-4 right-4 flex items-center gap-1.5 p-1.5 rounded-xl bg-slate-900/90 border border-slate-700/80 backdrop-blur-md shadow-lg z-10">
-        <button
-          onClick={handleZoomIn}
-          title="Zoom In"
-          className="p-2 rounded-lg text-slate-300 hover:text-white hover:bg-slate-800 transition-all cursor-pointer"
-        >
-          <ZoomIn className="w-4 h-4" />
-        </button>
-        <button
-          onClick={handleZoomOut}
-          title="Zoom Out"
-          className="p-2 rounded-lg text-slate-300 hover:text-white hover:bg-slate-800 transition-all cursor-pointer"
-        >
-          <ZoomOut className="w-4 h-4" />
-        </button>
-        <button
-          onClick={handleFit}
-          title="Fit to Center"
-          className="p-2 rounded-lg text-slate-300 hover:text-white hover:bg-slate-800 transition-all cursor-pointer"
-        >
-          <Maximize2 className="w-4 h-4" />
-        </button>
-        <button
-          onClick={handleResetLayout}
-          title="Recompute Layout"
-          className="p-2 rounded-lg text-slate-300 hover:text-white hover:bg-slate-800 transition-all cursor-pointer"
-        >
-          <RefreshCw className="w-4 h-4" />
-        </button>
+    <div>
+      <div className="relative">
+        <div ref={containerRef} className="h-[560px] w-full" aria-label="Coordination network graph" />
+        <div className="absolute top-3 right-3 flex gap-1">
+          <Button variant="secondary" className="px-2" onClick={() => zoom(1.25)} aria-label="Zoom in"><ZoomIn className="w-4 h-4" /></Button>
+          <Button variant="secondary" className="px-2" onClick={() => zoom(0.8)} aria-label="Zoom out"><ZoomOut className="w-4 h-4" /></Button>
+          <Button variant="secondary" className="px-2" onClick={() => cyRef.current.fit(undefined, 30)} aria-label="Fit to screen"><Maximize2 className="w-4 h-4" /></Button>
+        </div>
       </div>
-
-      {/* Graph Legend Overlay */}
-      <div className="absolute bottom-4 left-4 p-3 rounded-xl bg-slate-900/90 border border-slate-800 backdrop-blur-md text-xs z-10 space-y-1.5 font-mono">
-        <div className="font-semibold text-slate-300 uppercase tracking-wider text-[10px] mb-1">
-          Cluster Legend
-        </div>
-        <div className="flex items-center gap-2 text-slate-300">
-          <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: CAMPAIGN_COLORS.c1 }}></span>
-          Campaign C1 (Link Ring)
-        </div>
-        <div className="flex items-center gap-2 text-slate-300">
-          <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: CAMPAIGN_COLORS.c2 }}></span>
-          Campaign C2 (Rumour Ring)
-        </div>
-        <div className="flex items-center gap-2 text-slate-300">
-          <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: CAMPAIGN_COLORS.c3 }}></span>
-          Campaign C3 (Harassment Pile-on)
-        </div>
-        <div className="flex items-center gap-2 text-slate-400">
-          <span className="w-2.5 h-2.5 rounded-full bg-slate-600"></span>
-          Background Noise
-        </div>
+      <div className="flex flex-wrap gap-x-4 gap-y-1 px-4 py-3 border-t border-line text-xs text-muted">
+        {campaigns.map((c) => (
+          <button key={c.id} onClick={() => onSelect(c.id)} className="flex items-center gap-1.5 hover:text-ink cursor-pointer">
+            <span className="w-2.5 h-2.5 rounded-full" style={{ background: campaignColor(c.id) }} />
+            {c.id.toUpperCase()} {c.top_hashtag}
+          </button>
+        ))}
+        <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-faint" />Not in a campaign</span>
       </div>
     </div>
   )

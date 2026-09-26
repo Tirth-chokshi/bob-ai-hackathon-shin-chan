@@ -1,15 +1,25 @@
 import hashlib
 import html
 import json
+import logging
+import tempfile
 from datetime import datetime
 from pathlib import Path
 from zoneinfo import ZoneInfo
-from config import RUNS, BOB_API_KEY, BOB_RULES
+from config import RUNS, BOB_API_KEY
 from engine.schema import Campaign, Post, BobVerdict
 from engine.escalation import escalate
-from bob.client import classify, run_bob, extract_json
+from bob.client import cached_verdict, run_bob, extract_json
 
 IST = ZoneInfo("Asia/Kolkata")
+MAX_CAMPAIGNS = 10  # brief length cap; the dashboard lists every campaign
+# same wording and severity colours as the dashboard (docs/design-system.md)
+LEVEL_COLORS = {"URGENT": ("#c21f2b", "#fdecee"), "ALERT": ("#a45f00", "#fdf3e1"), "MONITOR": ("#3b6285", "#e9f1f8")}
+FEATURE_LABELS = {
+    "speed": "Posted within seconds", "duplication": "Near-identical text", "multi_signal": "Several signals",
+    "fresh_accounts": "New accounts", "burst": "Sudden burst", "concentration": "Same hashtag or link",
+}
+log = logging.getLogger(__name__)
 
 
 def generate_executive_summary(
@@ -18,68 +28,69 @@ def generate_executive_summary(
     campaigns: list[Campaign],
     verdicts: dict[str, BobVerdict]
 ) -> str:
+    """Bob writes the summary from the campaigns and verified verdicts; only Bob's text is cached."""
     summary_path = run_dir / "bob" / "summary.json"
     if summary_path.exists():
-        try:
-            with open(summary_path, "r", encoding="utf-8") as f:
-                data = json.load(f)
-                return data.get("summary", "")
-        except Exception:
-            pass
+        return json.loads(summary_path.read_text(encoding="utf-8")).get("summary", "")
 
-    # High-priority campaigns
-    high_camps = [c for c in campaigns if c.score >= 50]
-    if not high_camps:
-        return "Analysis completed. No coordinated inauthentic campaigns identified above the threshold of operational concern."
+    if not campaigns:
+        return "Analysis completed. No coordinated campaigns were detected in this dataset."
 
-    # Try calling Bob if configured
+    camp_lines = []
+    for c in campaigns[:MAX_CAMPAIGNS]:
+        v = verdicts.get(c.id)
+        v_desc = (f"Type: {v.threat_type}, Target: {v.target}, Severity: {v.severity}/5, "
+                  f"Escalation: {escalate(c.score, v)['level']}") if v else "Not yet classified by IBM Bob"
+        camp_lines.append(f"Campaign {c.id}: Score {c.score}/100, Size: {c.size} accounts, Hashtag: {c.top_hashtag}, {v_desc}")
+
     if BOB_API_KEY:
         try:
-            skill_text = (BOB_RULES.parent / "skills" / "threat-brief" / "SKILL.md").read_text(encoding="utf-8")
-            camp_summaries = []
-            for c in high_camps:
-                v = verdicts.get(c.id)
-                v_desc = f"Type: {v.threat_type}, Target: {v.target}, Severity: {v.severity}/5" if v else "Pending classification"
-                camp_summaries.append(
-                    f"Campaign {c.id}: Score {c.score}/100, Size: {c.size} accounts, Hashtag: {c.top_hashtag}, {v_desc}"
-                )
+            prompt = f"""You are a police cyber cell analyst. Write a 4 to 6 sentence Executive Summary for a busy Station House Officer (SHO)
+about the coordinated social media campaigns detected in dataset '{dataset_id}'. Plain English, no jargon.
 
-            prompt = f"""{skill_text}
-
-Analyze these detected social media campaigns for dataset '{dataset_id}' and write a 4 to 6 sentence Executive Summary for the Station House Officer (SHO).
+Start with a one-line bottom line: the most urgent campaign and its escalation level. Then the key threats, any real-world
+call to gather, and how urgent action is. Do not suggest legal sections. End by noting this is automated decision support.
+Use only the facts below. Do not invent threat types for campaigns that are not yet classified.
+Do not use any tools and do not read any files: everything you need is here.
 
 Campaigns:
-{chr(10).join(camp_summaries)}
+{chr(10).join(camp_lines)}
 
-Follow the threat-brief skill format. Include the bottom line recommendation, key threats, and operational urgency. Reply with ONLY JSON: {{"summary": "<text>"}}"""
-
-            raw_resp, _ = run_bob(prompt, work_dir=run_dir)
-            parsed = extract_json(raw_resp)
-            summary_text = parsed.get("summary")
+Reply with ONLY JSON: {{"summary": "<text>"}}"""
+            with tempfile.TemporaryDirectory() as tmp_dir:
+                raw_resp, _ = run_bob(prompt, work_dir=tmp_dir,
+                                      instruction="Write the executive summary described on stdin. Follow its instructions exactly.")
+            summary_text = extract_json(raw_resp).get("summary")
             if summary_text:
-                with open(summary_path, "w", encoding="utf-8") as f:
-                    json.dump({"summary": summary_text}, f, indent=2)
+                summary_path.parent.mkdir(parents=True, exist_ok=True)
+                summary_path.write_text(json.dumps({"summary": summary_text}, indent=2), encoding="utf-8")
                 return summary_text
         except Exception:
-            pass
+            log.exception("Bob summary failed; using the rule-based summary")
 
-    # Deterministic fallback summary if Bob is unavailable
-    top_c = high_camps[0]
+    # Rule-based summary when Bob is unavailable (not cached, so Bob is tried again next time)
+    top_c = campaigns[0]
     top_v = verdicts.get(top_c.id)
-    top_threat = top_v.threat_type if top_v else "coordinated inauthentic activity"
-    cta_note = " with an active offline gathering call" if (top_v and top_v.offline_call_to_action) else ""
-
-    summary = (
-        f"OPERATIONAL INTELLIGENCE BRIEF: Multi-signal CIB forensics identified {len(high_camps)} coordinated "
-        f"campaign cluster(s) requiring supervisory review. Primary escalation concerns Campaign {top_c.id} "
-        f"(Risk Score {top_c.score}/100) comprising {top_c.size} accounts exhibiting {top_threat}{cta_note} "
-        f"around '{top_c.top_hashtag or 'coordinated keywords'}'. "
-        f"Evidence preservation hashes have been generated for all flagged content in compliance with Section 63 BSA 2023. "
-        f"Immediate preventive and monitoring measures are detailed below for Station House Officer review."
+    classified = sum(1 for c in campaigns if c.id in verdicts)
+    top_desc = (f"classified by IBM Bob as {top_v.threat_type.replace('_', ' ')} "
+                f"(escalation {escalate(top_c.score, top_v)['level']})") if top_v else "not yet classified by IBM Bob"
+    return (
+        f"Coordination analysis detected {len(campaigns)} campaign(s); {classified} classified by IBM Bob. "
+        f"Highest risk is Campaign {top_c.id} (CIB score {top_c.score}/100, {top_c.size} accounts, "
+        f"'{top_c.top_hashtag or 'no hashtag'}'), {top_desc}. "
+        f"Evidence posts are hashed with SHA-256 below to support a Section 63 BSA certificate. "
+        f"Recommended actions per campaign follow for SHO review."
     )
-    with open(summary_path, "w", encoding="utf-8") as f:
-        json.dump({"summary": summary}, f, indent=2)
-    return summary
+
+
+def threat_html(v: BobVerdict | None) -> str:
+    if not v:
+        return "<p class='muted'>Not yet classified by IBM Bob.</p>"
+    cta = ("<p class='cta-alert'>⚠️ <strong>Real-World Call to Action Detected:</strong> Physical offline mobilization flagged.</p>"
+           if v.offline_call_to_action else "")
+    return (f"<p><strong>Threat Type:</strong> {html.escape(v.threat_type.replace('_', ' ').title())} (Severity {v.severity}/5)</p>"
+            f"<p><strong>Target:</strong> {html.escape(v.target)}</p>"
+            f"<p><strong>Narrative:</strong> {html.escape(v.narrative)}</p>{cta}")
 
 
 def render_brief(dataset_id: str) -> str:
@@ -92,62 +103,47 @@ def render_brief(dataset_id: str) -> str:
     campaigns_file = run_dir / "campaigns.json"
 
     if not posts_file.exists() or not campaigns_file.exists():
-        raise ValueError("Dataset has not completed analysis")
+        raise FileNotFoundError("Dataset has not completed analysis")
 
-    # Calculate dataset SHA-256
+    # Dataset SHA-256, read in chunks (posts.json can be 100+ MB)
+    sha = hashlib.sha256()
     with open(posts_file, "rb") as f:
-        posts_bytes = f.read()
-        dataset_sha256 = hashlib.sha256(posts_bytes).hexdigest()
+        for chunk in iter(lambda: f.read(1 << 20), b""):
+            sha.update(chunk)
+    dataset_sha256 = sha.hexdigest()
 
-    all_posts = [Post.model_validate(p) for p in json.loads(posts_bytes.decode("utf-8"))]
-    posts_by_id = {p.post_id: p for p in all_posts}
+    # Evidence comes from each campaign's first posts (Bob only sees and cites these)
+    samples_file = run_dir / "samples.json"
+    if not samples_file.exists():
+        raise FileNotFoundError("This dataset was analysed by an older version. Run the analysis again.")
+    samples = json.loads(samples_file.read_text(encoding="utf-8"))
+    posts_by_id = {p["post_id"]: Post.model_validate(p) for posts in samples.values() for p in posts}
 
     with open(campaigns_file, "r", encoding="utf-8") as f:
         campaigns = [Campaign.model_validate(c) for c in json.load(f)]
 
-    # Load cached verdicts
-    verdicts: dict[str, BobVerdict] = {}
-    bob_dir = run_dir / "bob"
-    if bob_dir.exists():
-        for c in campaigns:
-            c_file = bob_dir / f"{c.id}.json"
-            if c_file.exists():
-                try:
-                    with open(c_file, "r", encoding="utf-8") as vf:
-                        verdicts[c.id] = BobVerdict.model_validate(json.load(vf))
-                except Exception:
-                    pass
+    verdicts = {c.id: v for c in campaigns if (v := cached_verdict(run_dir, c.id))}
 
-    # Sort campaigns by score
-    active_campaigns = [c for c in campaigns if c.score >= 50]
+    shown = campaigns[:MAX_CAMPAIGNS]
     exec_summary = generate_executive_summary(run_dir, dataset_id, campaigns, verdicts)
     now_ist = datetime.now(IST).strftime("%d %B %Y, %H:%M:%S IST")
 
     # Build HTML
     campaign_blocks = []
-    for c in active_campaigns:
+    for c in shown:
         v = verdicts.get(c.id)
-        if not v:
-            # Create a placeholder verdict for brief display
-            v = BobVerdict(
-                threat_type="organized_misinformation" if c.score >= 75 else "benign_coordination",
-                target="Under OSINT evaluation",
-                narrative=f"Coordinated activity detected across {c.size} accounts centered on {c.top_hashtag}.",
-                severity=4 if c.score >= 80 else 3,
-                offline_call_to_action=False,
-                legal_suggestions=[],
-                evidence_post_ids=c.post_ids[:5],
-                verified=False
-            )
-
-        esc = escalate(c.score, v)
-        level = esc["level"]
-        badge_color = "#dc2626" if level == "URGENT" else "#d97706" if level == "ALERT" else "#4b5563"
-        badge_bg = "#fef2f2" if level == "URGENT" else "#fffbeb" if level == "ALERT" else "#f3f4f6"
+        if v:
+            esc = escalate(c.score, v)
+            level, actions, evidence_ids = esc["level"], esc["actions"], v.evidence_post_ids
+        else:
+            # Not classified yet: no threat type or escalation is guessed; show sample posts as evidence
+            level, actions = "PENDING", ["Classify this campaign with IBM Bob in the dashboard before escalating"]
+            evidence_ids = [p["post_id"] for p in samples.get(c.id, [])[:5]]
+        badge_color, badge_bg = LEVEL_COLORS.get(level, ("#5c6470", "#f0f2f5"))
 
         # Evidence table rows
         evidence_rows = []
-        for pid in v.evidence_post_ids[:8]:
+        for pid in evidence_ids[:8]:
             p = posts_by_id.get(pid)
             if not p:
                 continue
@@ -166,7 +162,7 @@ def render_brief(dataset_id: str) -> str:
 
         # Legal suggestions
         legal_items = []
-        for sug in v.legal_suggestions:
+        for sug in (v.legal_suggestions if v else []):
             legal_items.append(f"""
             <div class="legal-badge">
               <strong>{html.escape(sug.law or sug.id)}</strong> ({html.escape(sug.ipc or 'IPC')}) — 
@@ -176,10 +172,10 @@ def render_brief(dataset_id: str) -> str:
         legal_html = "".join(legal_items) if legal_items else "<p class='muted'>No explicit penal sections flagged. Verify in accordance with state guidelines.</p>"
 
         # Actions list
-        actions_list = "".join(f"<li>{html.escape(act)}</li>" for act in esc["actions"])
+        actions_list = "".join(f"<li>{html.escape(act)}</li>" for act in actions)
 
         # Features breakdown
-        feat_items = "".join(f"<div class='feat-pill'><strong>{k.replace('_', ' ').capitalize()}</strong>: {v_pts} pts</div>" for k, v_pts in c.features.items())
+        feat_items = "".join(f"<div class='feat-pill'>{FEATURE_LABELS.get(k, k)}: <strong>{v_pts}</strong></div>" for k, v_pts in c.features.items())
 
         campaign_blocks.append(f"""
         <div class="campaign-card">
@@ -190,32 +186,29 @@ def render_brief(dataset_id: str) -> str:
               <span class="accounts-badge">{c.size} accounts</span>
             </div>
             <div class="score-badge" style="background:{badge_bg}; color:{badge_color}; border: 1px solid {badge_color};">
-              {level} · CIB RISK {c.score}/100
+              {level.capitalize()} · coordination score {c.score}/100
             </div>
           </div>
 
-          <div class="section-title">Forensic Feature Contribution</div>
+          <div class="section-title">Why it was flagged (points)</div>
           <div class="features-grid">
             {feat_items}
           </div>
 
-          <div class="section-title">Threat Assessment & Target</div>
-          <p><strong>Threat Type:</strong> {html.escape(v.threat_type.replace('_', ' ').title())} (Severity {v.severity}/5)</p>
-          <p><strong>Target:</strong> {html.escape(v.target)}</p>
-          <p><strong>Narrative:</strong> {html.escape(v.narrative)}</p>
-          {f"<p class='cta-alert'>⚠️ <strong>Real-World Call to Action Detected:</strong> Physical offline mobilization flagged.</p>" if v.offline_call_to_action else ""}
+          <div class="section-title">IBM Bob assessment</div>
+          {threat_html(v)}
 
-          <div class="section-title">Applicable Legal Provisions (For Legal Verification)</div>
+          <div class="section-title">Legal sections to check (verify with a legal officer)</div>
           <div class="legal-container">
             {legal_html}
           </div>
 
-          <div class="section-title">Operational Response Directives</div>
+          <div class="section-title">Recommended actions</div>
           <ul class="actions-list">
             {actions_list}
           </ul>
 
-          <div class="section-title">Forensic Evidence Chain (BSA Section 63 Compliant)</div>
+          <div class="section-title">Forensic Evidence Chain (BSA Section 63 Compliant){"" if v else " — sample posts"}</div>
           <table class="evidence-table">
             <thead>
               <tr>
@@ -239,201 +232,45 @@ def render_brief(dataset_id: str) -> str:
   <meta charset="UTF-8">
   <title>Cyber Threat Intelligence Escalation Brief — {html.escape(dataset_id)}</title>
   <style>
-    body {{
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-      margin: 0;
-      padding: 32px;
-      color: #1f2937;
-      background: #f9fafb;
-      line-height: 1.5;
-    }}
-    .container {{
-      max-width: 960px;
-      margin: 0 auto;
-      background: #ffffff;
-      padding: 40px;
-      border-radius: 12px;
-      box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
-    }}
-    .header {{
-      border-bottom: 2px solid #e5e7eb;
-      padding-bottom: 24px;
-      margin-bottom: 28px;
-    }}
-    .title-row {{
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-    }}
-    h1 {{
-      font-size: 24px;
-      font-weight: 700;
-      color: #111827;
-      margin: 0 0 8px 0;
-    }}
-    .meta-grid {{
-      display: grid;
-      grid-template-columns: repeat(2, 1fr);
-      gap: 8px;
-      font-size: 13px;
-      color: #4b5563;
-      margin-top: 16px;
-    }}
-    .exec-summary {{
-      background: #f0fdf4;
-      border-left: 4px solid #16a34a;
-      padding: 16px 20px;
-      border-radius: 6px;
-      margin-bottom: 32px;
-    }}
-    .exec-summary h2 {{
-      font-size: 16px;
-      margin: 0 0 8px 0;
-      color: #166534;
-      text-transform: uppercase;
-      letter-spacing: 0.05em;
-    }}
-    .campaign-card {{
-      border: 1px solid #e5e7eb;
-      border-radius: 10px;
-      padding: 24px;
-      margin-bottom: 32px;
-      page-break-inside: avoid;
-    }}
-    .campaign-header {{
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      margin-bottom: 16px;
-    }}
-    .campaign-title {{
-      font-size: 18px;
-      font-weight: 700;
-      color: #111827;
-      margin-right: 12px;
-    }}
-    .hashtag {{
-      background: #eff6ff;
-      color: #1d4ed8;
-      padding: 3px 8px;
-      border-radius: 4px;
-      font-size: 13px;
-      font-weight: 600;
-      margin-right: 8px;
-    }}
-    .accounts-badge {{
-      background: #f3f4f6;
-      color: #4b5563;
-      padding: 3px 8px;
-      border-radius: 4px;
-      font-size: 12px;
-    }}
-    .score-badge {{
-      font-weight: 700;
-      font-size: 13px;
-      padding: 6px 14px;
-      border-radius: 20px;
-    }}
-    .section-title {{
-      font-size: 13px;
-      font-weight: 700;
-      color: #374151;
-      text-transform: uppercase;
-      letter-spacing: 0.04em;
-      margin: 18px 0 8px 0;
-    }}
-    .features-grid {{
-      display: flex;
-      flex-wrap: wrap;
-      gap: 8px;
-      margin-bottom: 12px;
-    }}
-    .feat-pill {{
-      background: #f9fafb;
-      border: 1px solid #e5e7eb;
-      padding: 4px 10px;
-      border-radius: 6px;
-      font-size: 12px;
-    }}
-    .legal-badge {{
-      background: #fdf2f8;
-      border: 1px solid #fbcfe8;
-      color: #9d174d;
-      padding: 8px 12px;
-      border-radius: 6px;
-      font-size: 13px;
-      margin-bottom: 6px;
-    }}
-    .cta-alert {{
-      background: #fef2f2;
-      color: #991b1b;
-      border: 1px solid #fecaca;
-      padding: 8px 12px;
-      border-radius: 6px;
-      font-size: 13px;
-    }}
-    .evidence-table {{
-      width: 100%;
-      border-collapse: collapse;
-      font-size: 12px;
-      margin-top: 8px;
-    }}
-    .evidence-table th, .evidence-table td {{
-      border: 1px solid #e5e7eb;
-      padding: 8px 10px;
-      text-align: left;
-    }}
-    .evidence-table th {{
-      background: #f9fafb;
-      color: #374151;
-      font-weight: 600;
-    }}
-    .mono {{
-      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-      font-size: 11px;
-    }}
-    .small-hash {{
-      color: #6b7280;
-    }}
-    .actions-list {{
-      margin: 4px 0 12px 20px;
-      padding: 0;
-      font-size: 13px;
-    }}
-    .actions-list li {{
-      margin-bottom: 4px;
-    }}
-    .print-btn {{
-      background: #2563eb;
-      color: white;
-      border: none;
-      padding: 8px 18px;
-      border-radius: 6px;
-      font-weight: 600;
-      cursor: pointer;
-    }}
-    .print-btn:hover {{
-      background: #1d4ed8;
-    }}
-    .limitations {{
-      margin-top: 40px;
-      border-top: 1px solid #e5e7eb;
-      padding-top: 16px;
-      font-size: 11px;
-      color: #6b7280;
-    }}
+    /* "Case File" design language (docs/design-system.md), light document for print */
+    :root {{ --ink: #15181d; --muted: #5c6470; --line: #e2e5ea; --subtle: #f0f2f5; --accent: #2456d6; }}
+    * {{ box-sizing: border-box; }}
+    body {{ font-family: system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif; margin: 0; padding: 32px 16px;
+           color: var(--ink); background: #f6f7f9; line-height: 1.5; font-size: 14px; }}
+    .container {{ max-width: 900px; margin: 0 auto; background: #fff; padding: 40px; border: 1px solid var(--line); border-radius: 8px; }}
+    .header {{ border-bottom: 1px solid var(--line); padding-bottom: 20px; margin-bottom: 24px; }}
+    .title-row {{ display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; }}
+    .eyebrow, .section-title, .exec-summary h2 {{ font-size: 12px; font-weight: 500; letter-spacing: .04em; text-transform: uppercase; color: var(--muted); }}
+    h1 {{ font-size: 22px; font-weight: 600; margin: 4px 0 0; }}
+    .meta-grid {{ display: grid; grid-template-columns: repeat(2, 1fr); gap: 6px 24px; font-size: 13px; color: var(--muted); margin-top: 16px; }}
+    .meta-grid strong {{ color: var(--ink); font-weight: 500; }}
+    .exec-summary {{ border-left: 3px solid var(--accent); background: var(--subtle); padding: 14px 18px; border-radius: 0 6px 6px 0; margin-bottom: 28px; }}
+    .exec-summary h2 {{ margin: 0 0 6px; }}
+    .exec-summary p {{ margin: 0; }}
+    .campaign-card {{ border: 1px solid var(--line); border-radius: 8px; padding: 20px; margin-bottom: 20px; break-inside: avoid; }}
+    .campaign-header {{ display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; }}
+    .campaign-title {{ font-size: 16px; font-weight: 600; margin-right: 8px; }}
+    .hashtag, .accounts-badge {{ font-size: 13px; color: var(--muted); margin-right: 8px; }}
+    .score-badge {{ font-size: 12px; font-weight: 600; padding: 3px 10px; border-radius: 999px; white-space: nowrap; }}
+    .section-title {{ margin: 18px 0 8px; }}
+    .features-grid {{ display: flex; flex-wrap: wrap; gap: 6px; }}
+    .feat-pill {{ font-size: 12px; background: var(--subtle); border-radius: 999px; padding: 2px 10px; }}
+    p {{ margin: 4px 0; }}
+    .muted {{ color: var(--muted); }}
+    .legal-badge {{ background: var(--subtle); border-radius: 6px; padding: 8px 12px; margin-bottom: 6px; font-size: 13px; }}
+    .cta-alert {{ background: #fdecee; color: #c21f2b; border-radius: 6px; padding: 8px 12px; }}
+    .actions-list {{ margin: 0; padding-left: 20px; }}
+    .evidence-table {{ width: 100%; border-collapse: collapse; font-size: 12px; }}
+    .evidence-table th {{ text-align: left; font-weight: 500; color: var(--muted); background: var(--subtle); padding: 6px 8px; }}
+    .evidence-table td {{ border-top: 1px solid var(--line); padding: 6px 8px; vertical-align: top; }}
+    .mono {{ font-family: ui-monospace, "Cascadia Mono", Consolas, monospace; }}
+    .small-hash {{ color: var(--muted); }}
+    .print-btn {{ background: var(--accent); color: #fff; border: 0; border-radius: 6px; padding: 8px 14px; font-size: 13px; font-weight: 500; cursor: pointer; }}
+    .limitations {{ border-top: 1px solid var(--line); padding-top: 16px; margin-top: 24px; font-size: 12px; color: var(--muted); }}
     @media print {{
-      body {{
-        background: white;
-        padding: 0;
-      }}
-      .container {{
-        box-shadow: none;
-        padding: 0;
-      }}
-      .print-btn {{
-        display: none;
-      }}
+      body {{ background: #fff; padding: 0; }}
+      .container {{ border: 0; padding: 0; }}
+      .print-btn {{ display: none; }}
     }}
   </style>
 </head>
@@ -442,8 +279,8 @@ def render_brief(dataset_id: str) -> str:
     <div class="header">
       <div class="title-row">
         <div>
-          <h1>POLICE CYBER CELL · THREAT INTELLIGENCE ESCALATION BRIEF</h1>
-          <div style="font-size: 14px; color: #4b5563;">State Police Cyber Command & Forensics Division</div>
+          <div class="eyebrow">Police cyber cell · for the Station House Officer</div>
+          <h1>Threat escalation brief</h1>
         </div>
         <button class="print-btn" onclick="window.print()">Print / Save PDF</button>
       </div>
@@ -457,8 +294,8 @@ def render_brief(dataset_id: str) -> str:
     </div>
 
     <div class="exec-summary">
-      <h2>Executive Summary for Station House Officer (SHO)</h2>
-      <p style="margin: 0; font-size: 14px; color: #14532d;">{html.escape(exec_summary)}</p>
+      <h2>Summary</h2>
+      <p>{html.escape(exec_summary)}</p>
     </div>
 
     <div class="campaigns-section">

@@ -34,15 +34,14 @@ def load_ira(path: str | Path, limit: int | None = None) -> list[Post]:
                 break
 
             post_id = row.get("tweet_id") or f"ira_{i}"
-            author = row.get("author") or row.get("external_author_id") or f"ira_author_{i}"
-            account_id = str(row.get("external_author_id") or author)
-            username = str(author)
+            # external_author_id is rounded in the CSV (9.06E+17), so different accounts collide; the handle is unique
+            author = str(row.get("author") or f"ira_author_{i}")
             created_at = parse_ira_date(row.get("publish_date", ""))
-            text = row.get("content", "")
+            text = row.get("content") or ""
 
-            # URLs from tco steps and article_url
+            # Links inside the tweet (article_url is the tweet's own permalink, so it is skipped)
             urls = []
-            for u_col in ("article_url", "tco1_step1", "tco2_step1", "tco3_step1"):
+            for u_col in ("tco1_step1", "tco2_step1", "tco3_step1"):
                 u_val = (row.get(u_col) or "").strip()
                 if u_val and u_val != "None" and u_val not in urls:
                     urls.append(u_val)
@@ -50,18 +49,13 @@ def load_ira(path: str | Path, limit: int | None = None) -> list[Post]:
             # Extract hashtags from text
             hashtags = re.findall(r"#\w+", text)
 
-            repost_of = None
-            if row.get("retweet") == "1":
-                # Marked as retweet
-                repost_of = "unknown_repost"
-
+            # The dataset flags retweets but not which tweet was retweeted, so repost_of stays empty
             posts.append(Post(
                 post_id=str(post_id),
-                account_id=account_id,
-                username=username,
+                account_id=author,
+                username=author,
                 created_at=created_at,
                 text=text,
-                repost_of=repost_of,
                 reply_to=None,
                 urls=urls,
                 hashtags=hashtags,
