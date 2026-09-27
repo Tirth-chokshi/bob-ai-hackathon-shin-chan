@@ -91,7 +91,6 @@ class BobVerdict(BaseModel):
     evidence_post_ids: list[str]
     offline_indicators: list[OfflineIndicator] = Field(default_factory=list)
     assessment_status: Literal["classified", "classification_failed", "insufficient_evidence"] = "classified"
-    review_status: Literal["unreviewed", "analyst_review", "supervisor_review", "closed"] = "unreviewed"
     prompt_version: str | None = None
     model_version: str | None = None
     legal_reference_version: str | None = None

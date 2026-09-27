@@ -9,7 +9,6 @@ from zoneinfo import ZoneInfo
 from config import RUNS, BOB_API_KEY
 from engine.schema import Campaign, Post, BobVerdict
 from engine.escalation import escalate
-from engine.workflow import get_review
 from bob.client import cached_verdict, run_bob, extract_json
 
 IST = ZoneInfo("Asia/Kolkata")
@@ -145,7 +144,6 @@ def render_brief(dataset_id: str) -> str:
     campaign_blocks = []
     for c in shown:
         v = verdicts.get(c.id)
-        review = get_review(run_dir / "workflow.sqlite", dataset_id, c.id)
         if v:
             esc = escalate(c.score, v)
             level, actions, evidence_ids = esc["level"], esc["actions"], v.evidence_post_ids
@@ -201,7 +199,6 @@ def render_brief(dataset_id: str) -> str:
               <span class="campaign-title">Campaign {html.escape(c.id)}</span>
               <span class="hashtag">{html.escape(c.top_hashtag or 'N/A')}</span>
               <span class="accounts-badge">{c.size} accounts</span>
-              <span class="accounts-badge">Review: {html.escape(review['status'].replace('_', ' '))}</span>
             </div>
             <div class="score-badge" style="background:{badge_bg}; color:{badge_color}; border: 1px solid {badge_color};">
               {level.capitalize()} · coordination score {c.score}/100

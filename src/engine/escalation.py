@@ -14,7 +14,6 @@ def escalate(score: int, verdict: BobVerdict) -> dict[str, Any]:
     result = {
         "status": "provisional",
         "review_required": True,
-        "review_status": verdict.review_status,
         "assessment_status": verdict.assessment_status,
     }
 

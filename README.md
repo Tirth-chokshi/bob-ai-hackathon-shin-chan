@@ -9,7 +9,7 @@
 | Role | Name | Email | Focus Area |
 |---|---|---|---|
 | **Lead / Forensics** | Tirth Chokshi | chokshitirth4@gmail.com | System Architecture, Coordination Engine & Pipeline |
-| **Frontend Engineering** | Milind Pawar | — | React 19 UI, Cytoscape Graph & Interactive Timeline |
+| **Frontend Engineering** | Milind Pawar | milindpawar1639@gmail.com | React 19 UI, Cytoscape Graph & Interactive Timeline |
 | **Bob Layer & MCP** | Jainik Devada | — | IBM Bob Integration, MCP Server, Legal Mapping |
 | **Data & Benchmarking** | Jigar Jariwala | — | Scenario Synthesis, Real Data Adapters, Evaluation |
 
@@ -38,7 +38,7 @@ Most conventional AI threat detectors classify posts individually. In contrast, 
    
    Identifies suspicious clusters using **NetworkX Louvain community detection** and computes an explainable **CIB Risk Score (0–100)** across 6 forensic features: temporal velocity, lexical duplication, multi-signal fusion, account freshness, burstiness ratio, and entity concentration.
 
-2. **Phase 2 — Threat Synthesis & Legal Intelligence (IBM Bob AI):** **IBM Bob** (`bob run`) investigates each flagged campaign to determine the threat vector (Incitement, Misinformation, Harassment, or Benign Coordination), assesses target entities and physical mobilization risks, and suggests specific statutory sections from our verified Indian Cyber Forensics Legal Table.
+2. **Phase 2 — Threat Synthesis & Legal Intelligence (IBM Bob AI):** **IBM Bob** (`bob run`) assesses each flagged campaign for incitement, misinformation, harassment, or benign coordination, identifies possible targets and offline calls to action, and suggests provisions from a versioned Indian legal-reference table. The current table is pending qualified legal review; suggestions are not legal conclusions.
 
 ---
 
@@ -65,20 +65,20 @@ Every number here comes from `python src/eval/measure.py`; the full output is in
 | Ring | Planted | Accounts | Found | Cluster | CIB score | IBM Bob verdict | Escalation |
 |---|---|---|---|---|---|---|---|
 | **A** | Dam-flood rumour + 7 PM gathering call | 40 | 40 (100%) | `c2` | **89** | `incitement` (severity 5) | **URGENT** |
-| **B** | Fake leaked-document links | 25 | 25 (100%) | `c1` | **92** | `organized_misinformation` (4) | **URGENT** |
-| **C** | Harassment pile-on against a journalist | 30 | 30 (100%) | `c3` | **88** | `targeted_harassment` (4) | **URGENT** |
+| **B** | Fake leaked-document links | 25 | 25 (100%) | `c1` | **92** | `organized_misinformation` (4) | **ALERT** |
+| **C** | Harassment pile-on against a journalist | 30 | 30 (100%) | `c3` | **88** | `targeted_harassment` (4) | **ALERT** |
 | **D** | Decoy: cricket fans chanting | 60 | 60 (100%) | `c4` | **72** | `benign_coordination` (1) | **MONITOR** |
 
 - All four groups are found as separate clusters with no extra accounts, and no other campaigns are reported.
 - The decoy *is* coordinated, so it is detected, but it scores lowest. IBM Bob labels it benign, and the rules escalate it only to MONITOR. This is the point of the design: behaviour first, content second.
-- The full analysis takes about 18 s on a laptop.
+- Runtime varies by machine; see the generated evaluation report for the latest measured run.
 
 **Real research datasets (no ground truth):**
 
 | Dataset | Analysed | Campaigns found | CIB scores |
 |---|---|---|---|
 | FiveThirtyEight IRA tweets | 3,313 posts from 44 accounts (busiest 6 hours) | 4 campaigns, 43 accounts (shared links) | 35–37 |
-| X/Twitter IO archive sample | 51,410 posts from 6,997 accounts (whole file) | 3 campaigns, 38 accounts (retweets, replies) | 59–62 |
+| X/Twitter IO archive sample | Not available in the current evaluation environment | Not measured | Not measured |
 
 Real campaigns score lower than the planted rings. The weights were set by hand on the synthetic scenario, and the IRA file has no account creation dates or retweet targets.
 
@@ -88,7 +88,7 @@ Real campaigns score lower than the planted rings. The weights were set by hand 
 
 ## 🏛️ Indian Legal Framework (BNS 2023 & IT Act)
 
-All statutory suggestions are filtered against our legal reference table (`.bob/rules-osint-analyst/01-legal-table.md`) and clearly marked for legal officer verification:
+Statutory suggestions are filtered against the versioned legal reference table (`.bob/rules-osint-analyst/01-legal-table.md` and its metadata sidecar). The current references are pending qualified legal review; verify applicability and current law before use:
 
 | Section Code | Law (2024) | Corresponding IPC | Forensic Scope |
 |---|---|---|---|

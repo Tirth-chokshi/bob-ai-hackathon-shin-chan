@@ -33,11 +33,5 @@ export const api = {
   verdict: (id, cid) => req("GET", `/datasets/${id}/campaigns/${cid}/verdict`),
   classify: (id, cid) =>
     req("POST", `/datasets/${id}/campaigns/${cid}/classify`),
-  review: (id, cid, body) =>
-    req(
-      "POST",
-      `/datasets/${id}/campaigns/${cid}/review`,
-      JSON.stringify(body),
-    ),
   briefUrl: (id) => `/api/datasets/${id}/brief`,
 };

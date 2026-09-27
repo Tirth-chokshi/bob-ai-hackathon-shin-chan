@@ -9,14 +9,12 @@ import time
 import uuid
 from contextlib import asynccontextmanager
 from pathlib import Path
-from typing import Literal
 
 # Ensure correct MIME types on Windows
 mimetypes.add_type("application/javascript", ".js")
 mimetypes.add_type("text/javascript", ".js")
 mimetypes.add_type("text/css", ".css")
 from fastapi import FastAPI, HTTPException, UploadFile, File, Body
-from pydantic import BaseModel, Field
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 
@@ -30,7 +28,6 @@ from engine.streaming import close as close_stream, ingest as ingest_stream_post
 from engine.escalation import escalate
 from bob.client import BobNotConfigured, cached_verdict, classify, is_bob_configured
 from brief.render import render_brief
-from engine.workflow import get_review, list_audit_events, record_review
 
 log = logging.getLogger(__name__)
 DEMO_NAME = "Demo dataset (pre-analysed)"  # shown in the datasets list
@@ -51,13 +48,6 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="Social Media Threat Intelligence Engine", lifespan=lifespan)
-
-
-class ReviewRequest(BaseModel):
-    reviewer_id: str = Field(min_length=1, max_length=120)
-    reviewer_role: Literal["analyst", "supervisor"]
-    decision: Literal["accept", "downgrade", "reject"]
-    reason: str = Field(default="", max_length=2000)
 
 
 def run_dir_for(dataset_id: str) -> Path:
@@ -310,10 +300,9 @@ def get_campaigns(dataset_id: str):
     result = []
     for c in campaigns:
         v = cached_verdict(run_dir, c["id"])
-        review = get_review(run_dir / "workflow.sqlite", dataset_id, c["id"])
         assessment = {"threat_type": v.threat_type, "severity": v.severity,
                       "level": escalate(c["score"], v)["level"]} if v else None
-        result.append({**campaign_summary(c), "assessment": assessment, "review": review})
+        result.append({**campaign_summary(c), "assessment": assessment})
     return result
 
 
@@ -332,27 +321,7 @@ def get_campaign(dataset_id: str, cid: str):
     run_dir = run_dir_for(dataset_id)
     campaign = load_campaign(run_dir, cid).model_dump()
     return {**campaign_summary(campaign), "accounts": campaign["accounts"],
-            "sample_posts": load_samples(run_dir, cid),
-            "review": get_review(run_dir / "workflow.sqlite", dataset_id, cid)}
-
-
-@app.post("/api/datasets/{dataset_id}/campaigns/{cid}/review")
-def review_campaign(dataset_id: str, cid: str, request: ReviewRequest):
-    run_dir = run_dir_for(dataset_id)
-    load_campaign(run_dir, cid)
-    try:
-        return record_review(run_dir / "workflow.sqlite", dataset_id, cid, request.reviewer_id,
-                             request.reviewer_role, request.decision, request.reason)
-    except ValueError as e:
-        raise HTTPException(status_code=409, detail=str(e))
-
-
-@app.get("/api/datasets/{dataset_id}/audit")
-def get_audit_events(dataset_id: str, campaign_id: str | None = None):
-    run_dir = run_dir_for(dataset_id)
-    if not run_dir.exists():
-        raise HTTPException(status_code=404, detail=f"Dataset {dataset_id} not found")
-    return list_audit_events(run_dir / "workflow.sqlite", dataset_id, campaign_id)
+            "sample_posts": load_samples(run_dir, cid)}
 
 
 @app.get("/api/datasets/{dataset_id}/campaigns/{cid}/verdict")
