@@ -275,7 +275,7 @@ export default function App() {
   return (
     <div className="min-h-screen flex flex-col">
       <header className="sticky top-0 z-20 bg-surface border-b border-line">
-        <div className="max-w-[1440px] mx-auto px-4 lg:px-6 min-h-14 py-2 flex flex-wrap items-center gap-x-6 gap-y-2">
+        <div className="max-w-1440 mx-auto px-4 lg:px-6 min-h-14 py-2 flex flex-wrap items-center gap-x-6 gap-y-2">
           <div className="flex items-center gap-2 font-semibold">
             <ShieldCheck className="w-5 h-5 text-accent" aria-hidden />
             Social-Threat Intel Engine
@@ -299,7 +299,7 @@ export default function App() {
                 <select
                   value={datasetId ?? ""}
                   onChange={(e) => setDatasetId(e.target.value)}
-                  className="h-8 max-w-[260px] rounded-md border border-line bg-surface text-ink text-sm px-2 cursor-pointer"
+                  className="h-8 max-w-260px rounded-md border border-line bg-surface text-ink text-sm px-2 cursor-pointer"
                 >
                   {datasets.map((d) => (
                     <option key={d.id} value={d.id}>
@@ -352,7 +352,7 @@ export default function App() {
         </div>
       </header>
 
-      <main className="flex-1 w-full max-w-[1440px] mx-auto px-4 lg:px-6 py-6">
+      <main className="flex-1 w-full max-w-1440 mx-auto px-4 lg:px-6 py-6">
         {error && (
           <div className="mb-4">
             <Banner onClose={() => setError(null)}>{error}</Banner>

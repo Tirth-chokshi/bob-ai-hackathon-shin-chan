@@ -300,7 +300,7 @@ export function CampaignPanel({
                 </span>
                 <span className="shrink-0">{fmtTime(p.created_at)}</span>
               </div>
-              <p className="break-words">{p.text}</p>
+              <p className="wrap-break-word">{p.text}</p>
               <div className="flex items-center justify-between mt-1.5 text-xs font-mono text-faint">
                 <span>{p.post_id}</span>
                 {evidence.has(p.post_id) && (
