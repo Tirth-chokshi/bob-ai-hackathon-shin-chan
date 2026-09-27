@@ -1,0 +1,23 @@
+{
+  "schema_version": 1,
+  "reference_version": "unreviewed-2026-09-27",
+  "source_document": "01-legal-table.md",
+  "review_status": "pending_qualified_review",
+  "effective_date": null,
+  "last_legal_review": null,
+  "required_disclaimer": "Provisions are suggestions to check, not charges or legal conclusions. A qualified legal reviewer must verify applicability, jurisdiction, source, and current text before use.",
+  "provisions": [
+    {"id": "BNS-196", "kind": "offence", "source": null, "effective_date": null, "last_legal_review": null},
+    {"id": "BNS-197", "kind": "offence", "source": null, "effective_date": null, "last_legal_review": null},
+    {"id": "BNS-351", "kind": "offence", "source": null, "effective_date": null, "last_legal_review": null},
+    {"id": "BNS-353", "kind": "offence", "source": null, "effective_date": null, "last_legal_review": null},
+    {"id": "BNS-356", "kind": "offence", "source": null, "effective_date": null, "last_legal_review": null},
+    {"id": "BNS-79", "kind": "offence", "source": null, "effective_date": null, "last_legal_review": null},
+    {"id": "BNS-61", "kind": "offence", "source": null, "effective_date": null, "last_legal_review": null},
+    {"id": "ITA-66D", "kind": "offence", "source": null, "effective_date": null, "last_legal_review": null},
+    {"id": "ITA-67", "kind": "offence", "source": null, "effective_date": null, "last_legal_review": null},
+    {"id": "ITA-69A", "kind": "procedural", "source": null, "effective_date": null, "last_legal_review": null},
+    {"id": "BNSS-163", "kind": "procedural", "source": null, "effective_date": null, "last_legal_review": null},
+    {"id": "BSA-63", "kind": "procedural", "source": null, "effective_date": null, "last_legal_review": null}
+  ]
+}

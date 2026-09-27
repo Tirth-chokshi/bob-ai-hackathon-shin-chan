@@ -17,10 +17,15 @@ export function CampaignPanel({
   campaignId,
   bobConfigured,
   onAssessed,
+  onReviewed,
 }) {
   const [campaign, setCampaign] = useState(null);
   const [result, setResult] = useState(null); // { verdict, escalation, cached, cost }
   const [asking, setAsking] = useState(false);
+  const [reviewing, setReviewing] = useState(false);
+  const [reviewerId, setReviewerId] = useState("");
+  const [reviewerRole, setReviewerRole] = useState("analyst");
+  const [reviewReason, setReviewReason] = useState("");
   const [error, setError] = useState(null);
   const current = useRef(campaignId);
   current.current = campaignId;
@@ -60,6 +65,28 @@ export function CampaignPanel({
       if (current.current === cid) setError(e.message);
     } finally {
       setAsking(false);
+    }
+  };
+
+  const submitReview = async (decision) => {
+    const cid = campaignId;
+    setReviewing(true);
+    setError(null);
+    try {
+      const review = await api.review(datasetId, cid, {
+        reviewer_id: reviewerId.trim(),
+        reviewer_role: reviewerRole,
+        decision,
+        reason: reviewReason,
+      });
+      if (current.current === cid)
+        setCampaign((value) => ({ ...value, review }));
+      onReviewed(cid, review);
+      setReviewReason("");
+    } catch (e) {
+      if (current.current === cid) setError(e.message);
+    } finally {
+      setReviewing(false);
     }
   };
 
@@ -181,6 +208,83 @@ export function CampaignPanel({
         {error && <p className="text-sm text-urgent">{error}</p>}
       </section>
 
+      <section className="p-4 space-y-3">
+        <div className="flex items-center justify-between gap-3">
+          <Label>Human review</Label>
+          <Badge>
+            {(campaign.review?.status ?? "unreviewed").replaceAll("_", " ")}
+          </Badge>
+        </div>
+        <p className="text-xs text-muted">
+          Automated decision support only. Reviewer IDs and roles are recorded
+          but are not authenticated by this prototype.
+        </p>
+        {campaign.review?.status !== "closed" && (
+          <>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              <label className="text-xs text-muted space-y-1">
+                Reviewer ID
+                <input
+                  value={reviewerId}
+                  onChange={(event) => setReviewerId(event.target.value)}
+                  maxLength={120}
+                  className="block w-full rounded-md border border-line bg-surface px-2 py-1.5 text-sm text-ink"
+                />
+              </label>
+              <label className="text-xs text-muted space-y-1">
+                Role
+                <select
+                  value={reviewerRole}
+                  onChange={(event) => setReviewerRole(event.target.value)}
+                  className="block w-full rounded-md border border-line bg-surface px-2 py-1.5 text-sm text-ink"
+                >
+                  <option value="analyst">Analyst</option>
+                  <option value="supervisor">Supervisor</option>
+                </select>
+              </label>
+            </div>
+            <label className="block text-xs text-muted space-y-1">
+              Review reason
+              <textarea
+                value={reviewReason}
+                onChange={(event) => setReviewReason(event.target.value)}
+                maxLength={2000}
+                rows={2}
+                className="block w-full rounded-md border border-line bg-surface px-2 py-1.5 text-sm text-ink"
+              />
+            </label>
+            <div className="flex flex-wrap gap-2">
+              {[
+                ["accept", "Accept"],
+                ["downgrade", "Downgrade"],
+                ["reject", "Reject"],
+              ].map(([decision, label]) => (
+                <Button
+                  key={decision}
+                  disabled={
+                    reviewing ||
+                    !reviewerId.trim() ||
+                    (["downgrade", "reject"].includes(decision) &&
+                      !reviewReason.trim())
+                  }
+                  onClick={() => submitReview(decision)}
+                >
+                  {reviewing ? <Spinner className="w-4 h-4" /> : null}
+                  {label}
+                </Button>
+              ))}
+            </div>
+          </>
+        )}
+        {campaign.review?.reviewer_id && (
+          <p className="text-xs text-muted">
+            Last recorded by {campaign.review.reviewer_id} (
+            {campaign.review.reviewer_role}) · {campaign.review.updated_at}
+            {campaign.review.reason ? ` · ${campaign.review.reason}` : ""}
+          </p>
+        )}
+      </section>
+
       {/* 4. First posts */}
       <section className="p-4">
         <Label className="mb-3">First posts, oldest first</Label>
@@ -231,7 +335,35 @@ function Assessment({ result }) {
       {verdict.offline_call_to_action && (
         <div className="flex gap-2 rounded-md bg-urgent-soft text-urgent px-3 py-2">
           <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0" aria-hidden />
-          <span>Call to gather offline detected in the posts.</span>
+          <span>
+            Possible offline call to action flagged in supplied posts. Verify
+            the wording and context.
+          </span>
+        </div>
+      )}
+
+      {verdict.offline_indicators?.length > 0 && (
+        <div>
+          <div className="text-xs text-muted mb-1">
+            Reported claims · verification required
+          </div>
+          <ul className="space-y-1">
+            {verdict.offline_indicators.map((indicator, index) => (
+              <li
+                key={`${indicator.kind}-${index}`}
+                className="rounded-md bg-subtle px-3 py-2"
+              >
+                <span className="font-medium capitalize">
+                  {indicator.kind.replaceAll("_", " ")}:{" "}
+                </span>
+                {indicator.value}
+                <span className="block text-xs text-muted mt-0.5">
+                  Cited posts: {indicator.evidence_post_ids.join(", ")} · verify
+                  independently
+                </span>
+              </li>
+            ))}
+          </ul>
         </div>
       )}
 

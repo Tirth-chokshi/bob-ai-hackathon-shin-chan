@@ -12,6 +12,7 @@ from engine.scoring import WEIGHTS
 from bob.legal import load_legal_table, allowed_offence_ids
 
 log = logging.getLogger(__name__)
+PROMPT_VERSION = "campaign-assessment-v2"
 
 
 class BobNotConfigured(Exception):
@@ -115,7 +116,8 @@ def extract_json(text: str) -> dict:
 def build_classification_prompt(
     campaign: Campaign,
     sample_posts: list[Post],
-    allowed_ids: list[str]
+    allowed_ids: list[str],
+    legal_reference: dict | None = None,
 ) -> str:
     rules_text = ""
     for r_file in sorted(BOB_RULES.glob("*.md")):
@@ -158,6 +160,11 @@ def build_classification_prompt(
         "median_account_age_days": campaign.median_account_age_days,
     }
 
+    legal_status = (
+        f"Version: {legal_reference['reference_version']}; review status: {legal_reference['review_status']}. "
+        f"{legal_reference['required_disclaimer']}"
+        if legal_reference else "Verify every suggested provision with a qualified legal reviewer."
+    )
     prompt = f"""You are a police cyber cell threat analyst evaluating a coordinated social media campaign in India.
 
 RULES & LEGAL CONTEXT:
@@ -168,6 +175,9 @@ CAMPAIGN ANALYSIS (timestamps are Unix seconds; score components show points, ma
 
 REPRESENTATIVE POSTS (all posts supplied by the analysis pipeline):
 {json.dumps(posts_repr, indent=2)}
+
+LEGAL REFERENCE STATUS: {legal_status}
+Legal entries are suggestions to check, never charges or legal conclusions.
 
 ALLOWED LEGAL OFFENCE IDs (choose ONLY from this list):
 {', '.join(allowed_ids)}
@@ -180,6 +190,10 @@ Analyze the behaviour and text. Reply with ONLY a single valid JSON object adher
   "narrative": "short summary of the campaign narrative",
   "severity": <integer 1 to 5>,
   "offline_call_to_action": <boolean>,
+    "offline_indicators": [
+        {{"kind": "action|location|event_time|target", "value": "claim stated in supplied posts",
+            "evidence_post_ids": ["<supplied post IDs>"], "verification_required": true}}
+    ],
   "legal_suggestions": [
     {{"id": "<allowed_id>", "why": "<one line explanation>"}}
   ],
@@ -194,18 +208,27 @@ def cached_verdict(run_dir: Path, campaign_id: str) -> BobVerdict | None:
     return BobVerdict.model_validate_json(path.read_text(encoding="utf-8")) if path.exists() else None
 
 
-def validate_verdict(data: dict, campaign: Campaign, legal_table: dict) -> BobVerdict:
-    """Schema-check Bob's answer, keep only offence IDs from our legal table and post IDs from this campaign."""
+def validate_verdict(data: dict, campaign: Campaign, legal_table: dict,
+                     sample_post_ids: set[str] | None = None) -> BobVerdict:
+    """Validate legal IDs and constrain all cited claims to posts supplied to Bob."""
     verdict = BobVerdict.model_validate(data)
     verdict.legal_suggestions = [
-        s.model_copy(update={k: legal_table[s.id][k] for k in ("title", "law", "ipc")})
+        s.model_copy(update={k: legal_table[s.id].get(k) for k in (
+            "title", "law", "ipc", "source", "effective_date", "last_legal_review",
+            "reference_version", "review_status")})
         for s in verdict.legal_suggestions
         if legal_table.get(s.id, {}).get("kind") == "offence"
     ]
-    campaign_post_ids = set(campaign.post_ids)
-    verdict.evidence_post_ids = [pid for pid in verdict.evidence_post_ids if pid in campaign_post_ids]
+    allowed_post_ids = set(campaign.post_ids)
+    if sample_post_ids is not None:
+        allowed_post_ids &= sample_post_ids
+    verdict.evidence_post_ids = [pid for pid in verdict.evidence_post_ids if pid in allowed_post_ids]
     if not verdict.evidence_post_ids:
-        raise ValueError("no evidence post IDs from this campaign")
+        raise ValueError("no evidence post IDs from the supplied campaign samples")
+    for indicator in verdict.offline_indicators:
+        indicator.evidence_post_ids = [pid for pid in indicator.evidence_post_ids if pid in allowed_post_ids]
+        if not indicator.evidence_post_ids:
+            raise ValueError(f"offline {indicator.kind} has no evidence from the supplied campaign samples")
     return verdict
 
 
@@ -231,7 +254,12 @@ def classify(
         raise BobNotConfigured("IBM Bob Shell CLI was not found. Install Bob Shell and ensure `bob` is on the backend PATH.")
 
     legal_table = load_legal_table()
-    prompt = build_classification_prompt(campaign, sample_posts, allowed_offence_ids())
+    prompt = build_classification_prompt(
+        campaign,
+        sample_posts,
+        allowed_offence_ids(),
+        next(iter(legal_table.values()), None),
+    )
 
     cost = 0.0
     verdict = None
@@ -241,7 +269,13 @@ def classify(
             try:
                 raw_resp, call_cost = run_bob(prompt, work_dir=tmp_dir)
                 cost += call_cost
-                verdict = validate_verdict(extract_json(raw_resp), campaign, legal_table)
+                verdict = validate_verdict(extract_json(raw_resp), campaign, legal_table,
+                                           {post.post_id for post in sample_posts})
+                verdict = verdict.model_copy(update={
+                    "prompt_version": PROMPT_VERSION,
+                    "model_version": "IBM Bob CLI (runtime model version unavailable)",
+                    "legal_reference_version": next(iter(legal_table.values()), {}).get("reference_version"),
+                })
                 break
             except Exception as e:
                 last_error = e

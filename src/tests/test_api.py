@@ -1,4 +1,5 @@
 import time
+import networkx as nx
 from fastapi.testclient import TestClient
 import api.main as main
 import engine.pipeline as pipeline
@@ -73,3 +74,39 @@ def test_classify_sends_all_stored_sample_posts(monkeypatch):
     assert response.status_code == 200
     assert len(received) == 20
     assert received[-1].post_id == "p19"
+
+
+def test_stream_api_uses_event_time_window_and_marks_alert_provisional(tmp_path, monkeypatch):
+    monkeypatch.setattr(main, "STREAM_DB", tmp_path / "streams.sqlite")
+    monkeypatch.setattr(main, "STREAMS", tmp_path / "stream-work")
+    monkeypatch.setattr(main, "STREAM_WINDOW_SECONDS", 60)
+    monkeypatch.setattr(main, "STREAM_RETENTION_SECONDS", 1000)
+    observed = []
+
+    def fake_graph(posts, **kwargs):
+        observed.append([post.created_at for post in posts])
+        return nx.Graph()
+
+    monkeypatch.setattr(main, "build_graph", fake_graph)
+    monkeypatch.setattr(main, "find_campaigns", lambda *args, **kwargs: [])
+
+    with TestClient(main.app) as client:
+        late = {"post_id": "p2", "account_id": "a2", "created_at": 120, "text": "second post"}
+        first = {"post_id": "p1", "account_id": "a1", "created_at": 90, "text": "first post"}
+        old = {"post_id": "p0", "account_id": "a0", "created_at": 10, "text": "old post"}
+        response = client.post("/api/streams/alpha/posts", json=late)
+        assert response.status_code == 200
+        assert response.json()["alert"]["status"] == "provisional"
+        assert response.json()["alert"]["review_required"] is True
+        client.post("/api/streams/alpha/posts", json=first)
+        duplicate = client.post("/api/streams/alpha/posts", json=first)
+        assert duplicate.json()["duplicate"] is True
+        client.post("/api/streams/alpha/posts", json=old)
+
+        alert = client.get("/api/streams/alpha/alerts").json()
+        assert alert["window_posts"] == 2
+        assert alert["retained_posts"] == 3
+        assert observed[-1] == [90, 120]
+        assert client.get("/api/streams/alpha/timeline").json()["points"]
+        assert client.post("/api/streams/alpha/close").json()["status"] == "closed"
+        assert client.post("/api/streams/alpha/posts", json={**late, "post_id": "p3"}).status_code == 409

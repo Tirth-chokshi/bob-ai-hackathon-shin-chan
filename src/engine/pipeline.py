@@ -1,6 +1,8 @@
 import json
+import hashlib
 import shutil
 import time
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Callable
 from config import RUNS, TIME_WINDOW, MIN_EDGE_WEIGHT
@@ -29,12 +31,14 @@ def analyze(
     window: int = TIME_WINDOW,
     min_weight: int = MIN_EDGE_WEIGHT,
     progress: Callable[[str], None] = lambda stage: None,
+    input_sha256: str | None = None,
 ) -> dict:
     """
     Executes the end-to-end CIB analysis pipeline for a dataset and writes to <output_dir>/<dataset_id>/:
     posts.json, campaigns.json, samples.json (first posts per campaign), graph.json (Cytoscape), timeline.json.
     """
     start_time = time.perf_counter()
+    started_at = datetime.now(timezone.utc).isoformat()
 
     base_dir = output_dir if output_dir is not None else RUNS
     run_dir = base_dir / dataset_id
@@ -43,6 +47,7 @@ def analyze(
     # 1. Save normalized posts.json (no indent: uploads can be 100k+ posts)
     progress("Saving posts")
     (run_dir / "posts.json").write_text(json.dumps([p.model_dump() for p in posts]), encoding="utf-8")
+    normalized_sha256 = hashlib.sha256((run_dir / "posts.json").read_bytes()).hexdigest()
 
     # 2. Build multi-signal coordination graph
     G = build_graph(posts, db_path=run_dir / "toolkit.db", window=window, min_weight=min_weight, progress=progress)
@@ -105,10 +110,25 @@ def analyze(
     (run_dir / "timeline.json").write_text(
         json.dumps({"bucket_seconds": bucket, "campaign_ids": camp_ids, "points": points}), encoding="utf-8")
 
-    return {
+    result = {
         "dataset_id": dataset_id,
         "posts": len(posts),
         "accounts": len({p.account_id for p in posts}),
         "runtime_ms": int((time.perf_counter() - start_time) * 1000),
         "campaigns": new_campaigns,
     }
+    manifest = {
+        "manifest_version": 1,
+        "dataset_id": dataset_id,
+        "schema_version": 1,
+        "software_version": "0.3.0",
+        "input_sha256": input_sha256,
+        "normalized_posts_sha256": normalized_sha256,
+        "configuration": {"window_seconds": window, "minimum_edge_weight": min_weight},
+        "post_count": len(posts),
+        "analysis_started_at": started_at,
+        "analysis_completed_at": datetime.now(timezone.utc).isoformat(),
+        "runtime_ms": result["runtime_ms"],
+    }
+    (run_dir / "manifest.json").write_text(json.dumps(manifest, indent=2), encoding="utf-8")
+    return result

@@ -1,4 +1,5 @@
 import json
+import hashlib
 import logging
 import mimetypes
 import re
@@ -8,28 +9,36 @@ import time
 import uuid
 from contextlib import asynccontextmanager
 from pathlib import Path
+from typing import Literal
 
 # Ensure correct MIME types on Windows
 mimetypes.add_type("application/javascript", ".js")
 mimetypes.add_type("text/javascript", ".js")
 mimetypes.add_type("text/css", ".css")
-from fastapi import FastAPI, HTTPException, UploadFile, File
+from fastapi import FastAPI, HTTPException, UploadFile, File, Body
+from pydantic import BaseModel, Field
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 
-from config import WEB_DIST, RUNS, SAMPLES
-from engine.normalize import load_posts
+from config import WEB_DIST, RUNS, SAMPLES, STREAMS, STREAM_WINDOW_SECONDS, STREAM_RETENTION_SECONDS, MIN_EDGE_WEIGHT
+from engine.normalize import load_posts, load_rows
 from engine.pipeline import analyze, STAGES
 from engine.schema import Campaign, Post
+from engine.coordination import build_graph
+from engine.campaigns import find_campaigns
+from engine.streaming import close as close_stream, ingest as ingest_stream_post, read_state as read_stream_state, save_alert
 from engine.escalation import escalate
 from bob.client import BobNotConfigured, cached_verdict, classify, is_bob_configured
 from brief.render import render_brief
+from engine.workflow import get_review, list_audit_events, record_review
 
 log = logging.getLogger(__name__)
 DEMO_NAME = "Demo dataset (pre-analysed)"  # shown in the datasets list
 
 # ponytail: in-memory job table for this one server process; a restart forgets running jobs (re-run the analysis)
 JOBS: dict[str, dict] = {}
+STREAM_DB = STREAMS / "streams.sqlite"
+STREAM_LOCK = threading.RLock()
 
 
 @asynccontextmanager
@@ -42,6 +51,13 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="Social Media Threat Intelligence Engine", lifespan=lifespan)
+
+
+class ReviewRequest(BaseModel):
+    reviewer_id: str = Field(min_length=1, max_length=120)
+    reviewer_role: Literal["analyst", "supervisor"]
+    decision: Literal["accept", "downgrade", "reject"]
+    reason: str = Field(default="", max_length=2000)
 
 
 def run_dir_for(dataset_id: str) -> Path:
@@ -105,7 +121,8 @@ def run_job(dataset_id: str, source: Path):
 
     try:
         progress("Reading posts")
-        result = analyze(dataset_id, load_posts(source), progress=progress)
+        source_hash = hashlib.sha256(source.read_bytes()).hexdigest()
+        result = analyze(dataset_id, load_posts(source), progress=progress, input_sha256=source_hash)
         job.update(state="done", finished=time.time(), campaigns=len(result["campaigns"]), runtime_ms=result["runtime_ms"])
     except Exception as e:
         log.exception("Analysis of %s failed", dataset_id)
@@ -114,7 +131,95 @@ def run_job(dataset_id: str, source: Path):
 
 @app.get("/api/status")
 def status():
-    return {"bob_configured": is_bob_configured(), "version": "0.2.0"}
+    return {"bob_configured": is_bob_configured(), "version": "0.3.0"}
+
+
+def validate_stream_id(stream_id: str) -> str:
+    if not re.fullmatch(r"[A-Za-z0-9_-]+", stream_id):
+        raise HTTPException(status_code=400, detail="Invalid stream id")
+    return stream_id
+
+
+def recompute_stream(stream_id: str, posts: list[Post], latest: int) -> dict:
+    window_start = latest - STREAM_WINDOW_SECONDS
+    active_posts = [post for post in posts if window_start <= post.created_at <= latest]
+    stream_dir = STREAMS / stream_id
+    stream_dir.mkdir(parents=True, exist_ok=True)
+    graph = build_graph(active_posts, db_path=stream_dir / "coordination.sqlite",
+                        window=STREAM_WINDOW_SECONDS, min_weight=MIN_EDGE_WEIGHT)
+    campaigns = find_campaigns(graph, active_posts, min_size=5, window=STREAM_WINDOW_SECONDS)
+    now = time.time()
+    return {
+        "stream_id": stream_id,
+        "status": "provisional",
+        "review_required": True,
+        "window_started_at": window_start,
+        "window_ended_at": latest,
+        "last_updated_at": now,
+        "retained_posts": len(posts),
+        "window_posts": len(active_posts),
+        "campaigns": [
+            {"id": campaign.id, "accounts": campaign.size, "post_count": len(campaign.post_ids),
+             "coordination_score": campaign.score, "signals": campaign.signals,
+             "first_seen": campaign.first_seen, "last_seen": campaign.last_seen}
+            for campaign in campaigns
+        ],
+    }
+
+
+@app.post("/api/streams/{stream_id}/posts")
+def add_stream_post(stream_id: str, payload: dict = Body(...)):
+    validate_stream_id(stream_id)
+    if not payload:
+        raise HTTPException(status_code=422, detail="Post payload cannot be empty")
+    try:
+        [post] = load_rows([payload], list(payload), source_name=f"stream:{stream_id}", source_id=stream_id)
+    except (ValueError, TypeError) as e:
+        raise HTTPException(status_code=422, detail=str(e))
+    with STREAM_LOCK:
+        try:
+            duplicate, posts, latest = ingest_stream_post(STREAM_DB, stream_id, post, STREAM_RETENTION_SECONDS)
+        except ValueError as e:
+            raise HTTPException(status_code=409, detail=str(e))
+        alert = recompute_stream(stream_id, posts, latest)
+        save_alert(STREAM_DB, stream_id, alert)
+    return {"duplicate": duplicate, "alert": alert}
+
+
+@app.get("/api/streams/{stream_id}/alerts")
+def get_stream_alerts(stream_id: str):
+    validate_stream_id(stream_id)
+    state = read_stream_state(STREAM_DB, stream_id)
+    if not state:
+        raise HTTPException(status_code=404, detail="Stream not found")
+    stream, _ = state
+    return stream["alert"]
+
+
+@app.get("/api/streams/{stream_id}/timeline")
+def get_stream_timeline(stream_id: str):
+    validate_stream_id(stream_id)
+    state = read_stream_state(STREAM_DB, stream_id)
+    if not state:
+        raise HTTPException(status_code=404, detail="Stream not found")
+    stream, posts = state
+    buckets: dict[int, int] = {}
+    for post in posts:
+        if post.created_at >= (stream["latest_event_time"] or 0) - STREAM_WINDOW_SECONDS:
+            bucket_time = post.created_at // 60 * 60
+            buckets[bucket_time] = buckets.get(bucket_time, 0) + 1
+    return {"stream_id": stream_id, "bucket_seconds": 60,
+            "points": [{"t": t, "total": count} for t, count in sorted(buckets.items())]}
+
+
+@app.post("/api/streams/{stream_id}/close")
+def finish_stream(stream_id: str):
+    validate_stream_id(stream_id)
+    if not close_stream(STREAM_DB, stream_id):
+        state = read_stream_state(STREAM_DB, stream_id)
+        if not state:
+            raise HTTPException(status_code=404, detail="Stream not found")
+    return {"stream_id": stream_id, "status": "closed"}
 
 
 @app.get("/api/datasets")
@@ -161,7 +266,9 @@ def upload_dataset(file: UploadFile = File(...)):
         shutil.rmtree(dataset_dir, ignore_errors=True)
         raise HTTPException(status_code=422, detail=f"Could not read this file: {e}")
 
-    meta = {"name": Path(file.filename).name, "posts": len(posts), "accounts": len({p.account_id for p in posts})}
+    safe_name = Path((file.filename or "upload").replace("\\", "/")).name
+    meta = {"name": safe_name, "posts": len(posts), "accounts": len({p.account_id for p in posts})}
+    meta["input_sha256"] = hashlib.sha256(upload_path.read_bytes()).hexdigest()
     (dataset_dir / "meta.json").write_text(json.dumps(meta), encoding="utf-8")
     return {"dataset_id": dataset_id, **meta}
 
@@ -203,9 +310,10 @@ def get_campaigns(dataset_id: str):
     result = []
     for c in campaigns:
         v = cached_verdict(run_dir, c["id"])
+        review = get_review(run_dir / "workflow.sqlite", dataset_id, c["id"])
         assessment = {"threat_type": v.threat_type, "severity": v.severity,
                       "level": escalate(c["score"], v)["level"]} if v else None
-        result.append({**campaign_summary(c), "assessment": assessment})
+        result.append({**campaign_summary(c), "assessment": assessment, "review": review})
     return result
 
 
@@ -223,7 +331,28 @@ def get_timeline(dataset_id: str):
 def get_campaign(dataset_id: str, cid: str):
     run_dir = run_dir_for(dataset_id)
     campaign = load_campaign(run_dir, cid).model_dump()
-    return {**campaign_summary(campaign), "accounts": campaign["accounts"], "sample_posts": load_samples(run_dir, cid)}
+    return {**campaign_summary(campaign), "accounts": campaign["accounts"],
+            "sample_posts": load_samples(run_dir, cid),
+            "review": get_review(run_dir / "workflow.sqlite", dataset_id, cid)}
+
+
+@app.post("/api/datasets/{dataset_id}/campaigns/{cid}/review")
+def review_campaign(dataset_id: str, cid: str, request: ReviewRequest):
+    run_dir = run_dir_for(dataset_id)
+    load_campaign(run_dir, cid)
+    try:
+        return record_review(run_dir / "workflow.sqlite", dataset_id, cid, request.reviewer_id,
+                             request.reviewer_role, request.decision, request.reason)
+    except ValueError as e:
+        raise HTTPException(status_code=409, detail=str(e))
+
+
+@app.get("/api/datasets/{dataset_id}/audit")
+def get_audit_events(dataset_id: str, campaign_id: str | None = None):
+    run_dir = run_dir_for(dataset_id)
+    if not run_dir.exists():
+        raise HTTPException(status_code=404, detail=f"Dataset {dataset_id} not found")
+    return list_audit_events(run_dir / "workflow.sqlite", dataset_id, campaign_id)
 
 
 @app.get("/api/datasets/{dataset_id}/campaigns/{cid}/verdict")

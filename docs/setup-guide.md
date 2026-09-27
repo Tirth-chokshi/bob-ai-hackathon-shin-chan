@@ -48,6 +48,8 @@ On Windows (PowerShell): `Copy-Item src/.env.example src/.env`
 | `TIMEZONE` | Timezone for brief timestamps | Optional (Default: Asia/Kolkata) |
 | `TIME_WINDOW_SECONDS` | Coordination time window | Optional (Default: 60) |
 | `MIN_EDGE_WEIGHT` | Minimum times two accounts must coordinate | Optional (Default: 2) |
+| `STREAM_WINDOW_SECONDS` | Event-time window for provisional stream alerts | Optional (Default: 900) |
+| `STREAM_RETENTION_SECONDS` | Maximum event-time retention for stream posts | Optional (Default: 86400) |
 
 ---
 
@@ -136,11 +138,15 @@ Open **http://localhost:5173** — changes reload instantly and `/api` calls are
 
 ### Verify it works
 
-1. The app opens on **Overview** for the demo dataset: 4 campaigns ranked by coordination score, with 3 marked Urgent. The cricket decoy (C4) ranks lowest and is marked Monitor.
+1. The app opens on **Overview** for the fictional demo dataset. Coordination scores rank behavioral similarity; all automated escalation results remain provisional and require verification.
 2. Select a campaign: the panel shows why it was flagged, IBM Bob's saved assessment and its first posts.
 3. **Network** shows the same campaigns as a graph; click a dot to open its campaign.
 4. **Brief** → **Print or save as PDF** produces the time-stamped threat brief.
 5. Optional: **Datasets** → upload a CSV (for example `data/raw/ira_1.csv`). The analysis starts automatically and shows each step; the full IRA file takes about 5 minutes.
+
+The rolling-stream API is documented in [`../demo/README.md`](../demo/README.md). It currently recomputes the complete graph after each post and is intended for a local mock demonstration, not production throughput.
+
+The server defaults to loopback (`127.0.0.1`). This prototype has no authentication or authorization layer; do not bind it to a public or shared network interface.
 
 ---
 

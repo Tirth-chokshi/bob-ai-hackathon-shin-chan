@@ -17,6 +17,10 @@ def test_scenario_analysis(tmp_path: Path):
     assert (run_dir / "campaigns.json").exists()
     assert (run_dir / "graph.json").exists()
     assert (run_dir / "timeline.json").exists()
+    manifest = json.loads((run_dir / "manifest.json").read_text(encoding="utf-8"))
+    assert manifest["dataset_id"] == "test_run"
+    assert manifest["configuration"]["window_seconds"] > 0
+    assert len(manifest["normalized_posts_sha256"]) == 64
 
     campaigns = res["campaigns"]
     assert len(campaigns) >= 3

@@ -4,43 +4,52 @@ from engine.schema import BobVerdict
 
 def escalate(score: int, verdict: BobVerdict) -> dict[str, Any]:
     """
-    Applies deterministic police cyber cell escalation rules based on
-    CIB score, threat classification, and offline call-to-action flags.
+    Returns provisional review recommendations. Coordination is not evidence
+    of threat intent, and automated output never completes human review.
     """
     threat_type = verdict.threat_type
     severity = verdict.severity
     cta = verdict.offline_call_to_action
 
-    # 1. URGENT rule
-    if (threat_type == "incitement" and cta) or (score >= 80 and severity >= 4):
+    result = {
+        "status": "provisional",
+        "review_required": True,
+        "review_status": verdict.review_status,
+        "assessment_status": verdict.assessment_status,
+    }
+
+    # A high coordination score is not, by itself, evidence of offline harm.
+    if (threat_type == "incitement" and cta and verdict.assessment_status == "classified"
+            and len(set(verdict.evidence_post_ids)) >= 2):
         return {
+            **result,
             "level": "URGENT",
             "actions": [
-                "Notify SHO and district control room",
-                "Preserve evidence (hashes in brief)",
-                "Request platform takedown through the law-enforcement channel (see ITA-69A)",
-                "Consider preventive orders (BNSS-163)",
-                "Issue a public fact-check advisory"
-            ]
+                "Priority analyst review of the cited offline-action evidence",
+                "Verify the reported action, timing, location, and context",
+                "Preserve source records and document review decisions",
+                "Consult the appropriate supervisor and legal reviewer before action",
+            ],
         }
 
     # 2. ALERT rule
     if threat_type in ("organized_misinformation", "targeted_harassment") and score >= 60:
         return {
+            **result,
             "level": "ALERT",
             "actions": [
-                "Log lead in cyber cell monitoring register",
-                "Preserve evidence and generate verification brief",
-                "Monitor campaign hashtag and cluster for amplification",
-                "Brief desk officer for potential public clarification"
+                "Analyst review of the evidence and benign explanations",
+                "Preserve source records and document verification steps",
+                "Assess whether monitoring or a public clarification is appropriate",
             ]
         }
 
     # 3. MONITOR rule
     return {
+        **result,
         "level": "MONITOR",
         "actions": [
-            "Routine periodic surveillance",
-            "No immediate enforcement action required"
+            "Routine analyst triage if warranted",
+            "Do not infer inauthenticity or intent from coordination alone",
         ]
     }

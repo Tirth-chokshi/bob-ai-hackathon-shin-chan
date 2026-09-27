@@ -194,6 +194,14 @@ export default function App() {
       ),
     }));
 
+  const onReviewed = (cid, review) =>
+    setData((prev) => ({
+      ...prev,
+      campaigns: prev.campaigns.map((campaign) =>
+        campaign.id === cid ? { ...campaign, review } : campaign,
+      ),
+    }));
+
   const assessedCount = data.campaigns?.filter((c) => c.assessment).length ?? 0;
   const panel = dataset && (
     <CampaignPanel
@@ -201,6 +209,7 @@ export default function App() {
       campaignId={selectedId}
       bobConfigured={bobConfigured}
       onAssessed={onAssessed}
+      onReviewed={onReviewed}
     />
   );
 

@@ -9,6 +9,7 @@ from zoneinfo import ZoneInfo
 from config import RUNS, BOB_API_KEY
 from engine.schema import Campaign, Post, BobVerdict
 from engine.escalation import escalate
+from engine.workflow import get_review
 from bob.client import cached_verdict, run_bob, extract_json
 
 IST = ZoneInfo("Asia/Kolkata")
@@ -48,8 +49,9 @@ def generate_executive_summary(
             prompt = f"""You are a police cyber cell analyst. Write a 4 to 6 sentence Executive Summary for a busy Station House Officer (SHO)
 about the coordinated social media campaigns detected in dataset '{dataset_id}'. Plain English, no jargon.
 
-Start with a one-line bottom line: the most urgent campaign and its escalation level. Then the key threats, any real-world
-call to gather, and how urgent action is. Do not suggest legal sections. End by noting this is automated decision support.
+Start with a one-line bottom line: the campaign that most needs human review. Then summarize only assessed claims and
+any model-flagged offline call to action, explicitly described as unverified. Do not suggest legal sections.
+End by noting this is automated decision support and does not replace analyst verification.
 Use only the facts below. Do not invent threat types for campaigns that are not yet classified.
 Do not use any tools and do not read any files: everything you need is here.
 
@@ -86,11 +88,20 @@ Reply with ONLY JSON: {{"summary": "<text>"}}"""
 def threat_html(v: BobVerdict | None) -> str:
     if not v:
         return "<p class='muted'>Not yet classified by IBM Bob.</p>"
-    cta = ("<p class='cta-alert'>⚠️ <strong>Real-World Call to Action Detected:</strong> Physical offline mobilization flagged.</p>"
+    cta = ("<p class='cta-alert'><strong>Possible offline call to action flagged:</strong> Verify the cited posts and context.</p>"
            if v.offline_call_to_action else "")
+    indicators = ""
+    if v.offline_indicators:
+      claims = "".join(
+        f"<li><strong>{html.escape(item.kind.replace('_', ' ').title())}:</strong> "
+        f"{html.escape(item.value)} — reported in posts; verify independently "
+        f"(evidence: {html.escape(', '.join(item.evidence_post_ids))})</li>"
+        for item in v.offline_indicators
+      )
+      indicators = f"<p><strong>Reported claims requiring verification:</strong></p><ul>{claims}</ul>"
     return (f"<p><strong>Threat Type:</strong> {html.escape(v.threat_type.replace('_', ' ').title())} (Severity {v.severity}/5)</p>"
             f"<p><strong>Target:</strong> {html.escape(v.target)}</p>"
-            f"<p><strong>Narrative:</strong> {html.escape(v.narrative)}</p>{cta}")
+        f"<p><strong>Narrative:</strong> {html.escape(v.narrative)}</p>{cta}{indicators}")
 
 
 def render_brief(dataset_id: str) -> str:
@@ -111,6 +122,8 @@ def render_brief(dataset_id: str) -> str:
         for chunk in iter(lambda: f.read(1 << 20), b""):
             sha.update(chunk)
     dataset_sha256 = sha.hexdigest()
+    manifest_path = run_dir / "manifest.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8")) if manifest_path.exists() else {}
 
     # Evidence comes from each campaign's first posts (Bob only sees and cites these)
     samples_file = run_dir / "samples.json"
@@ -132,6 +145,7 @@ def render_brief(dataset_id: str) -> str:
     campaign_blocks = []
     for c in shown:
         v = verdicts.get(c.id)
+        review = get_review(run_dir / "workflow.sqlite", dataset_id, c.id)
         if v:
             esc = escalate(c.score, v)
             level, actions, evidence_ids = esc["level"], esc["actions"], v.evidence_post_ids
@@ -153,6 +167,7 @@ def render_brief(dataset_id: str) -> str:
             evidence_rows.append(f"""
             <tr>
               <td class="mono">{html.escape(p.post_id)}</td>
+              <td>{html.escape(p.source_name or 'Unavailable')}{f' · row {p.source_row}' if p.source_row else ''}</td>
               <td>{html.escape(post_time)}</td>
               <td class="mono">{html.escape(p.username)}</td>
               <td>{html.escape(p.text)}</td>
@@ -167,9 +182,11 @@ def render_brief(dataset_id: str) -> str:
             <div class="legal-badge">
               <strong>{html.escape(sug.law or sug.id)}</strong> ({html.escape(sug.ipc or 'IPC')}) — 
               <em>{html.escape(sug.title or sug.id)}</em>: {html.escape(sug.why)}
+              <span class="muted"> · {html.escape(sug.reference_version or 'version unavailable')} ·
+              {html.escape((sug.review_status or 'pending qualified review').replace('_', ' '))}</span>
             </div>
             """)
-        legal_html = "".join(legal_items) if legal_items else "<p class='muted'>No explicit penal sections flagged. Verify in accordance with state guidelines.</p>"
+        legal_html = "".join(legal_items) if legal_items else "<p class='muted'>No provisions suggested. Any legal mapping requires qualified legal review.</p>"
 
         # Actions list
         actions_list = "".join(f"<li>{html.escape(act)}</li>" for act in actions)
@@ -184,6 +201,7 @@ def render_brief(dataset_id: str) -> str:
               <span class="campaign-title">Campaign {html.escape(c.id)}</span>
               <span class="hashtag">{html.escape(c.top_hashtag or 'N/A')}</span>
               <span class="accounts-badge">{c.size} accounts</span>
+              <span class="accounts-badge">Review: {html.escape(review['status'].replace('_', ' '))}</span>
             </div>
             <div class="score-badge" style="background:{badge_bg}; color:{badge_color}; border: 1px solid {badge_color};">
               {level.capitalize()} · coordination score {c.score}/100
@@ -198,7 +216,7 @@ def render_brief(dataset_id: str) -> str:
           <div class="section-title">IBM Bob assessment</div>
           {threat_html(v)}
 
-          <div class="section-title">Legal sections to check (verify with a legal officer)</div>
+          <div class="section-title">Provisions to check (qualified legal review required)</div>
           <div class="legal-container">
             {legal_html}
           </div>
@@ -208,11 +226,12 @@ def render_brief(dataset_id: str) -> str:
             {actions_list}
           </ul>
 
-          <div class="section-title">Forensic Evidence Chain (BSA Section 63 Compliant){"" if v else " — sample posts"}</div>
+          <div class="section-title">Evidence records{"" if v else " — sample posts"}</div>
           <table class="evidence-table">
             <thead>
               <tr>
                 <th>Post ID</th>
+                <th>Source record</th>
                 <th>Timestamp (IST)</th>
                 <th>Handle</th>
                 <th>Content Text</th>
@@ -289,7 +308,8 @@ def render_brief(dataset_id: str) -> str:
         <div><strong>Dataset Reference:</strong> {html.escape(dataset_id)}</div>
         <div><strong>Generated Timestamp:</strong> {html.escape(now_ist)}</div>
         <div><strong>Evidence SHA-256:</strong> <span class="mono">{html.escape(dataset_sha256[:20])}...</span></div>
-        <div><strong>Compliance Standard:</strong> Bharatiya Sakshya Adhiniyam (BSA) Section 63</div>
+        <div><strong>Input SHA-256:</strong> <span class="mono">{html.escape((manifest.get('input_sha256') or 'Unavailable')[:20])}...</span></div>
+        <div><strong>Analysis window:</strong> {html.escape(str(manifest.get('configuration', {}).get('window_seconds', 'Unavailable')))} seconds</div>
       </div>
     </div>
 
@@ -303,7 +323,7 @@ def render_brief(dataset_id: str) -> str:
     </div>
 
     <div class="limitations">
-      <strong>Operational Notice & Legal Limitations:</strong> This threat intelligence brief is generated by automated behavioral coordination analysis (coordination-network-toolkit, NetworkX Louvain) and AI legal reasoning (IBM Bob). All identified campaigns, classifications, and statutory provisions are decision-support indicators intended solely for guidance and must be independently verified by an investigating officer and verified by a designated legal officer before taking penal or administrative action.
+      <strong>Operational Notice & Limitations:</strong> This is automated decision support, not a finding of inauthenticity, intent, imminent violence, or legal liability. Coordination and model-generated claims require independent human verification. Hashes support integrity checking but do not by themselves establish chain of custody, certification, or legal admissibility. Legal provisions are suggestions to check and require qualified legal review before any action.
     </div>
   </div>
 </body>

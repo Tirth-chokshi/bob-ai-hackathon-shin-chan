@@ -260,6 +260,9 @@ def generate(seed: int = 42) -> tuple[list[dict], dict]:
     posts.sort(key=lambda x: (x["created_at"], x["post_id"]))
 
     truth = {
+        "fixture_id": "synthetic_sundarpur",
+        "fixture_version": "1.0",
+        "seed": seed,
         "A": camp_a_accounts,
         "B": camp_b_accounts,
         "C": camp_c_accounts,

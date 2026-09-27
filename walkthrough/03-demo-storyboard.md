@@ -4,6 +4,8 @@ Target duration: 4 to 6 minutes.
 
 The demo should tell one story: an analyst starts with a large post batch, finds an emerging coordinated campaign, checks the evidence, asks Bob for interpretation, and creates a reviewable brief.
 
+For a live baseline-to-burst stream using fictional posts, follow [`../demo/README.md`](../demo/README.md). The stream endpoints return provisional coordination alerts; live Bob interpretation remains a separate batch-campaign action.
+
 ## Before the Demo
 
 1. Start the application with `python src/main.py`.
@@ -81,13 +83,14 @@ The demo should tell one story: an analyst starts with a large post batch, finds
 
 **Point out:**
 
-- `URGENT` is triggered by the documented rule combination.
-- Recommended actions include preserving evidence and notifying the appropriate control room.
-- These are recommendations, not automatic orders.
+- Escalation results are provisional and require human review.
+- A high coordination score and Bob severity alone cannot produce `URGENT`.
+- The current `URGENT` rule requires an incitement label, an offline-call-to-action flag, and at least two distinct validated evidence post IDs.
+- Actions are recommendations to verify, not automatic orders.
 
 **Say:**
 
-"The escalation level comes from deterministic rules using the coordination score and validated threat fields. An authorized officer still decides what action is appropriate."
+"The escalation level comes from deterministic rules, but a coordination score is not proof of harmful intent. Even an urgent recommendation is provisional and depends on multiple cited evidence posts. A trained reviewer decides what action is appropriate."
 
 ## Scene 6: Generate the Brief
 
@@ -99,14 +102,14 @@ The demo should tell one story: an analyst starts with a large post batch, finds
 - Dataset hash.
 - Campaign summary.
 - Evidence table.
-- SHA-256 evidence hashes.
+- SHA-256 source and normalized evidence hashes where available.
 - Legal provisions to check.
 - Recommended actions.
 - Limitations and review language.
 
 **Say:**
 
-"The brief turns analysis into an artifact that a supervisor or legal reviewer can inspect. It preserves the evidence references and shows how the recommendation was reached."
+"The brief organizes evidence and shows its source references. Hashes help detect changes, but do not alone establish chain of custody, certification, or legal admissibility."
 
 ## Closing Statement
 

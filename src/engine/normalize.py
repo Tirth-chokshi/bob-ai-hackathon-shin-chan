@@ -1,5 +1,6 @@
 """Turns an uploaded CSV/JSON into Posts. Format guide for users: docs/data-format.md."""
 import csv
+import hashlib
 import itertools
 import json
 import logging
@@ -64,7 +65,8 @@ def column_key(name: str) -> str:
     return re.sub(r"[\s\-]+", "_", name.strip().lower())
 
 
-def load_rows(rows, columns: list[str]) -> list[Post]:
+def load_rows(rows, columns: list[str], source_name: str | None = None,
+              source_id: str | None = None) -> list[Post]:
     """Map rows (dicts) with any of the accepted column names onto Posts."""
     keys = {c: column_key(c) for c in columns}
     col = {field: next((c for name in names for c in columns if keys[c] == name), None) for field, names in ALIASES.items()}
@@ -78,6 +80,7 @@ def load_rows(rows, columns: list[str]) -> list[Post]:
                          "See docs/data-format.md or download the template.")
 
     posts, skipped = [], 0
+    ingested_at = int(datetime.now(timezone.utc).timestamp())
     for i, row in enumerate(rows):
         def get(field):
             return row.get(col[field]) if col[field] else None
@@ -88,19 +91,41 @@ def load_rows(rows, columns: list[str]) -> list[Post]:
             skipped += 1
             continue
         text = str(get("text") or "")
-        posts.append(Post(
-            post_id=str(get("post_id") or f"row{i + 1}"),
-            account_id=account,
-            username=str(get("username") or account),
-            created_at=created_at,
-            text=text,
-            repost_of=str(get("repost_of") or "").strip() or None,
-            reply_to=str(get("reply_to") or "").strip() or None,
+        raw_post = {
+            "post_id": str(get("post_id") or f"row{i + 1}"),
+            "account_id": account,
+            "username": str(get("username") or account),
+            "created_at": created_at,
+            "text": text,
+            "repost_of": str(get("repost_of") or "").strip() or None,
+            "reply_to": str(get("reply_to") or "").strip() or None,
             # no column (or empty): take links and hashtags from the text
-            urls=as_list(get("urls")) or URL_RE.findall(text),
-            hashtags=as_list(get("hashtags")) or HASHTAG_RE.findall(text),
-            account_created_at=parse_time(get("account_created_at")),
-        ))
+            "urls": as_list(get("urls")) or URL_RE.findall(text),
+            "hashtags": as_list(get("hashtags")) or HASHTAG_RE.findall(text),
+            "account_created_at": parse_time(get("account_created_at")),
+        }
+        origins = {
+            "post_id": "supplied" if get("post_id") else "defaulted",
+            "account_id": "supplied",
+            "username": "supplied" if get("username") else "defaulted",
+            "created_at": "supplied",
+            "text": "supplied",
+            "repost_of": "supplied" if get("repost_of") else "defaulted",
+            "reply_to": "supplied" if get("reply_to") else "defaulted",
+            "urls": "supplied" if as_list(get("urls")) else "extracted" if URL_RE.search(text) else "defaulted",
+            "hashtags": "supplied" if as_list(get("hashtags")) else "extracted" if HASHTAG_RE.search(text) else "defaulted",
+            "account_created_at": "supplied" if get("account_created_at") else "defaulted",
+        }
+        original_hash = hashlib.sha256(
+            json.dumps(row, sort_keys=True, ensure_ascii=False, default=str, separators=(",", ":")).encode("utf-8")
+        ).hexdigest()
+        post = Post(**raw_post, source_id=source_id, source_name=source_name, source_row=i + 1,
+                    ingested_at=ingested_at, original_record_sha256=original_hash, field_origins=origins)
+        normalized_hash = hashlib.sha256(
+            json.dumps(post.model_dump(exclude={"normalized_record_sha256"}), sort_keys=True,
+                       ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+        ).hexdigest()
+        posts.append(post.model_copy(update={"normalized_record_sha256": normalized_hash}))
 
     if not posts:
         raise ValueError(f"No usable rows: all {skipped} rows lack an account or a readable time "
@@ -120,7 +145,7 @@ def load_posts(path: str | Path, limit: int | None = None) -> list[Post]:
         if not isinstance(data, list) or not all(isinstance(r, dict) for r in data):
             raise ValueError("Expected a JSON array of post objects")
         rows = data[:limit] if limit else data
-        return load_rows(rows, list(dict.fromkeys(k for r in rows for k in r)))
+        return load_rows(rows, list(dict.fromkeys(k for r in rows for k in r)), path.name, path.parent.name)
 
     with open(path, encoding="utf-8-sig", errors="replace", newline="") as f:
         try:  # comma, semicolon (Excel in many locales) or tab
@@ -137,4 +162,4 @@ def load_posts(path: str | Path, limit: int | None = None) -> list[Post]:
             return load_io_archive(path, limit=limit)
         if "publish_date" in names and ("author" in names or "tweet_id" in names):
             return load_ira(path, limit=limit)
-        return load_rows(itertools.islice(reader, limit) if limit else reader, columns)
+        return load_rows(itertools.islice(reader, limit) if limit else reader, columns, path.name, path.parent.name)

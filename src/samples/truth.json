@@ -1,4 +1,7 @@
 {
+  "fixture_id": "synthetic_sundarpur",
+  "fixture_version": "1.0",
+  "seed": 42,
   "A": [
     "a_1001",
     "a_1002",

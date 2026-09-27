@@ -28,6 +28,11 @@ def test_json_upload(tmp_path):
     f.write_text(json.dumps([{"id": "a", "author": "x", "date": "2026-09-23", "message": "hi"}]), encoding="utf-8")
     [p] = load_posts(f)
     assert (p.post_id, p.account_id, p.text) == ("a", "x", "hi")
+    assert p.source_name == f.name and p.source_id == tmp_path.name
+    assert p.source_row == 1 and len(p.original_record_sha256) == 64
+    assert len(p.normalized_record_sha256) == 64
+    assert p.field_origins["username"] == "supplied"
+    assert p.field_origins["urls"] == "defaulted"
 
 
 def test_text_only_dataset_explains_why(tmp_path):

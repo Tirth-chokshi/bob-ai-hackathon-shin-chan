@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Synthetic coordination evaluation fixture",
+  "type": "object",
+  "required": ["fixture_id", "fixture_version", "seed", "A", "B", "C", "D", "labels"],
+  "properties": {
+    "fixture_id": {"const": "synthetic_sundarpur"},
+    "fixture_version": {"type": "string", "minLength": 1},
+    "seed": {"type": "integer"},
+    "A": {"type": "array", "items": {"type": "string"}, "uniqueItems": true},
+    "B": {"type": "array", "items": {"type": "string"}, "uniqueItems": true},
+    "C": {"type": "array", "items": {"type": "string"}, "uniqueItems": true},
+    "D": {"type": "array", "items": {"type": "string"}, "uniqueItems": true},
+    "labels": {
+      "type": "object",
+      "required": ["A", "B", "C", "D"],
+      "properties": {
+        "A": {"type": "string"},
+        "B": {"type": "string"},
+        "C": {"type": "string"},
+        "D": {"type": "string"}
+      }
+    }
+  }
+}
