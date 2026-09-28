@@ -41,7 +41,7 @@ submission:
 
   key_features:                        # REQUIRED — List 3 to 5 specific features you implemented
     - "Early warning of offline threats: IBM Bob extracts the planned gathering (place quoted from the posts, time checked) and the engine records when each network was first flagged, so the lead time before the gathering is shown"
-    - "Brings in real data as it is: any CSV/Excel/JSON export (columns matched by name or picked from a preview), X API search and stream data, WhatsApp and Telegram exports, languages detected in any script; then five coordination networks, community detection, an explainable 0-100 score, and how each campaign spread and who started it"
+    - "X API v2 native: ingests X API v2 JSON exactly as returned (search, timelines, filtered stream, or fetched from the app with X recent search), stores it in a per-dataset database that mirrors the X API objects, and shows posts, reposts, quotes and threads as on X with the real engagement counts"
     - "IBM Bob threat classifier: labels each campaign (incitement, harassment, misinformation, benign) and cites evidence post IDs that are verified in code"
     - "Legal suggestions: BNS 2023 (196, 197, 351, 353, 356, 79) and IT Act 2000 (66D, 67, 69A) mappings, marked for legal verification"
     - "Police threat brief: time-stamped, print-ready brief with SHA-256 hashes of the batch and every evidence post"
@@ -63,8 +63,7 @@ submission:
     datasets (e.g. CONSTRAINT-2021) have no account or time, so they can't be analysed for coordination. X search needs
     a paid X API plan; there is no live platform connector beyond it and the demonstration stream API. Scores and
     classifications are decision support, and legal sections need verification by a legal officer. CIB score weights
-    are hand-set: real campaigns score 35-63 (IRA 35-43, as those archives lack account creation dates and retweet
-    targets). Bob's labels are not benchmarked.
+    are hand-set and not calibrated on labelled data. Input is X API v2 JSON only. Bob's labels are not benchmarked.
 
 # =============================================================================
 # ARTIFACT LOCATIONS

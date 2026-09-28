@@ -15,10 +15,10 @@ The core idea is **behaviour first, content second**: we first find accounts tha
 ## How It Works
 
 ```
-[Post batch: CSV / JSON]
+[X API v2 JSON: search / timeline / stream output]
                  │
                  ▼
-[Stage 0: Normalize]  common schema: post_id, account_id, created_at, text, repost_of, reply_to, urls, hashtags, account_created_at
+[Stage 0: Store]  x.db, one table per X API object; the posts view gives post_id, account_id, created_at, text, repost_of, reply_to, quote_of, urls, hashtags, account_created_at
                  │
                  ▼
 [Stage 1: Coordination Networks]  (QUT coordination-network-toolkit)
@@ -41,7 +41,7 @@ The core idea is **behaviour first, content second**: we first find accounts tha
 
 ### Detailed Operational Steps
 
-1. **Ingestion & Normalization:** Loads a batch of posts (CSV/JSON with any common column names, a WhatsApp chat export or a Telegram export) and converts it into one common schema with platform, town and language, so the rest of the pipeline works the same for every source.
+1. **Ingestion & storage:** Accepts X API v2 JSON exactly as the API returns it, checks that every post has `created_at` and `author_id`, and stores it in a per-dataset SQLite database whose tables mirror the X API objects ([`data-model.md`](data-model.md)). The analysis reads one view of it.
 2. **Coordination Detection:** For every pair of accounts, counts how often they performed the same action within a short time window (60 seconds by default). A minimum edge weight of 2 filters out one-off coincidences. Output is an account-to-account graph.
 3. **Campaign Discovery:** Merges all coordination types into one weighted graph, drops weak edges, and runs community detection. Each community of 5+ accounts becomes a candidate campaign.
 4. **Spread profile:** For each campaign, the engine records who posted first, the most connected accounts, the order and times it reached each platform and town, how fast it spread, the share of new accounts, and the earliest time it met the detection rule. Compared with a planned gathering, that last time is the early-warning lead.

@@ -1,12 +1,16 @@
-"""Reads an analysed run's posts for the Posts view (an X-style timeline and threads) and the "at a glance" numbers.
+"""Reads a dataset's posts from its X database (x.db) for the Posts view (an X-style timeline and threads) and the
+"at a glance" numbers.
 
-Nothing is invented: counts are the platform's own when the source has them (X API, X archives, exports with count
-columns), otherwise the replies, reposts and quotes found inside this dataset, and the response says which.
+Nothing is invented: counts are X's own public_metrics when the data has them, never fewer than the replies, reposts
+and quotes found inside this dataset; without public_metrics they are the ones found in the dataset, and the response
+says which.
 """
 import json
 from collections import Counter, defaultdict
 from functools import lru_cache
 from pathlib import Path
+
+from engine.xstore import open_db, read_posts
 
 FACETS = ("platform", "language", "city")
 KINDS = {  # the Posts view's "post type" filter
@@ -21,11 +25,14 @@ KINDS = {  # the Posts view's "post type" filter
 class Run:
     """All posts of a run, oldest first, with who replied to, reposted and quoted each one."""
 
-    def __init__(self, posts: list[dict], campaigns: list[dict]):
+    def __init__(self, posts: list[dict], campaigns: list[dict], context: list[dict] = ()):
+        """posts: the dataset (X API `data`); context: referenced posts from includes.tweets, shown in repost and
+        quote cards and threads but never listed or counted as part of the dataset."""
         campaign_of = {pid: c["id"] for c in campaigns for pid in c["post_ids"]}
         posts.sort(key=lambda p: p["created_at"])
         self.posts = posts
-        self.by_id = {p["post_id"]: p for p in posts}
+        self.by_id = {**{p["post_id"]: {**p, "campaign": None, "context": True} for p in context},
+                      **{p["post_id"]: p for p in posts}}
         self.replies, self.reposts, self.quotes = defaultdict(list), defaultdict(list), defaultdict(list)
         for p in posts:
             p["campaign"] = campaign_of.get(p["post_id"])
@@ -66,17 +73,22 @@ class Run:
 
 
 @lru_cache(maxsize=2)  # ponytail: the last two datasets stay in memory (a 250k-post run is a few hundred MB)
-def _load(posts_path: str, mtime: float, campaigns_path: str, campaigns_mtime: float) -> Run:
-    posts = json.loads(Path(posts_path).read_text(encoding="utf-8"))
-    campaigns = json.loads(Path(campaigns_path).read_text(encoding="utf-8")) if Path(campaigns_path).exists() else []
-    return Run(posts, campaigns)
+def _load(run_dir: str, db_mtime: float, campaigns_mtime: float) -> Run:
+    db = open_db(Path(run_dir))  # the dataset's X database (engine/xstore.py)
+    try:
+        posts, context = read_posts(db), read_posts(db, source="includes")
+    finally:
+        db.close()
+    campaigns_path = Path(run_dir) / "campaigns.json"
+    campaigns = json.loads(campaigns_path.read_text(encoding="utf-8")) if campaigns_path.exists() else []
+    return Run([p.model_dump() for p in posts], campaigns, [p.model_dump() for p in context])
 
 
 def load_run(run_dir: Path) -> Run:
-    posts, campaigns = run_dir / "posts.json", run_dir / "campaigns.json"
-    if not posts.exists():
-        raise FileNotFoundError("Posts not found. Run analysis first.")
-    return _load(str(posts), posts.stat().st_mtime, str(campaigns), campaigns.stat().st_mtime if campaigns.exists() else 0)
+    db, campaigns = run_dir / "x.db", run_dir / "campaigns.json"
+    if not db.exists():
+        raise FileNotFoundError("This dataset has no X database. Upload it again as X API v2 JSON.")
+    return _load(str(run_dir), db.stat().st_mtime, campaigns.stat().st_mtime if campaigns.exists() else 0)
 
 
 def run_posts(run_dir: Path) -> list[dict]:
@@ -85,7 +97,7 @@ def run_posts(run_dir: Path) -> list[dict]:
 
 def dataset_stats(run_dir: Path) -> dict:
     """Counts for the Overview's "at a glance" line; saved next to the posts and redone when they change."""
-    path, posts_path = run_dir / "stats.json", run_dir / "posts.json"
+    path, posts_path = run_dir / "stats.json", run_dir / "x.db"
     if path.exists() and path.stat().st_mtime >= posts_path.stat().st_mtime:
         return json.loads(path.read_text(encoding="utf-8"))
     posts = run_posts(run_dir)

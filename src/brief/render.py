@@ -175,15 +175,15 @@ def render_brief(dataset_id: str) -> str:
     global ZONE
     ZONE = dataset_zone(run_dir)
 
-    posts_file = run_dir / "posts.json"
     campaigns_file = run_dir / "campaigns.json"
+    source = next(iter(sorted(run_dir.glob("upload*"))), None)  # the X API JSON exactly as uploaded or fetched
 
-    if not posts_file.exists() or not campaigns_file.exists():
+    if not source or not campaigns_file.exists():
         raise FileNotFoundError("Dataset has not completed analysis")
 
-    # Dataset SHA-256, read in chunks (posts.json can be 100+ MB)
+    # SHA-256 of the original X API file, read in chunks (it can be 100+ MB)
     sha = hashlib.sha256()
-    with open(posts_file, "rb") as f:
+    with open(source, "rb") as f:
         for chunk in iter(lambda: f.read(1 << 20), b""):
             sha.update(chunk)
     dataset_sha256 = sha.hexdigest()
@@ -373,7 +373,7 @@ def render_brief(dataset_id: str) -> str:
       <div class="meta-grid">
         <div><strong>Dataset Reference:</strong> {html.escape(dataset_id)}</div>
         <div><strong>Generated Timestamp:</strong> {html.escape(now_ist)}</div>
-        <div><strong>Evidence SHA-256:</strong> <span class="mono">{html.escape(dataset_sha256[:20])}...</span></div>
+        <div><strong>Source file (X API JSON) SHA-256:</strong> <span class="mono">{html.escape(dataset_sha256[:20])}...</span></div>
       </div>
     </div>
 

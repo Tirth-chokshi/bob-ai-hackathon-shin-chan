@@ -189,17 +189,8 @@ export default function App() {
   };
 
   const upload = async (file) => {
-    const res = await api.upload(file); // errors are shown in the upload card
-    if (res.needs_mapping) {
-      await refreshDatasets();
-      return res; // the Datasets page asks which column is which
-    }
+    const res = await api.upload(file); // errors (e.g. not X API v2 JSON) are shown in the upload card
     await analyseAndOpen(res.dataset_id);
-  };
-
-  const confirmMapping = async (id, mapping) => {
-    await api.mapping(id, mapping);
-    await analyseAndOpen(id);
   };
 
   const xSearch = async (query, max) => {
@@ -267,15 +258,7 @@ export default function App() {
       );
 
     let body;
-    if (dataset.needs_mapping)
-      body = (
-        <StateCard title="Choose the columns first"
-          action={<Button variant="primary" onClick={() => setView("datasets")}>Go to Datasets</Button>}>
-          This file's columns could not all be matched by name. On the Datasets page, press Choose columns and pick
-          which column is the account, the time and the text.
-        </StateCard>
-      );
-    else if (needsAnalysis(dataset))
+    if (needsAnalysis(dataset))
       body = <AnalysisState dataset={dataset} onAnalyze={analyse} />;
     else if (!data.campaigns)
       body = (
@@ -425,7 +408,6 @@ export default function App() {
             }}
             onDelete={remove}
             onUpload={upload}
-            onMapping={confirmMapping}
             onXSearch={xSearch}
             xConfigured={xConfigured}
           />
@@ -433,7 +415,7 @@ export default function App() {
         {datasets?.length === 0 && view !== "datasets" && (
           <StateCard title="No datasets yet"
             action={<Button variant="primary" onClick={() => setView("datasets")}>Add a dataset</Button>}>
-            Upload an export (CSV, Excel, JSON, X API data, WhatsApp or Telegram) or search X, and the analysis starts by itself.
+            Upload X API v2 JSON (search, timeline or filtered-stream output, as the API returned it) or search X, and the analysis starts by itself.
           </StateCard>
         )}
         <ErrorBoundary resetKey={`${view}:${datasetId}`}>

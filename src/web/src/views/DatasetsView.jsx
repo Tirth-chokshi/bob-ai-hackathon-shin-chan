@@ -1,44 +1,24 @@
 import React, { useState } from 'react'
-import { AtSign, Search, Trash2, Upload } from 'lucide-react'
-import { api } from '../api'
+import { AlertTriangle, AtSign, Search, Trash2, Upload } from 'lucide-react'
 import { Badge, Button, Card, PageHeader, Spinner } from '../ui'
-import { ColumnMapping } from '../components/ColumnMapping'
 import { fmt, fmtTime } from '../labels'
 
 function StatusBadge({ dataset }) {
   const job = dataset.job ?? {}
   if (job.state === 'running') return <Badge tone="accent"><Spinner className="w-3 h-3" />Analysing · step {job.step + 1}/{job.stages.length}</Badge>
   if (job.state === 'error') return <Badge tone="URGENT">Failed</Badge>
-  if (dataset.needs_mapping) return <Badge tone="ALERT">Choose columns</Badge>
   if (dataset.analyzed) return <Badge tone="benign">Ready</Badge>
   return <Badge>Not analysed</Badge>
 }
 
-export function DatasetsView({ datasets, currentId, onOpen, onAnalyze, onDelete, onUpload, onMapping, onXSearch, xConfigured }) {
-  const [mapping, setMapping] = useState(null) // an upload waiting for its columns: { dataset_id, name, columns, rows, suggested }
-  const [error, setError] = useState(null)
-  const chooseColumns = async (d) => {
-    setError(null)
-    try {
-      setMapping(await api.columns(d.id))
-    } catch (e) {
-      setError(e.message)
-    }
-  }
-
+// Every dataset is X API v2 JSON, stored in its own X database (docs/data-model.md)
+export function DatasetsView({ datasets, currentId, onOpen, onAnalyze, onDelete, onUpload, onXSearch, xConfigured }) {
   return (
     <>
-      <PageHeader title="Datasets" subtitle="Bring in posts from a file or from X, then analyse them for coordinated campaigns." />
-      {error && <p className="text-sm text-urgent mb-3">{error}</p>}
-      {mapping && (
-        <div className="mb-4">
-          <ColumnMapping upload={mapping} onCancel={() => setMapping(null)}
-            onConfirm={async (id, m) => { await onMapping(id, m); setMapping(null) }} />
-        </div>
-      )}
+      <PageHeader title="Datasets" subtitle="X API v2 posts, uploaded as the API returned them or fetched from X, analysed for coordinated campaigns." />
       <div className="grid gap-4 lg:grid-cols-12 items-start">
         <div className="lg:col-span-4 space-y-4">
-          <UploadCard onUpload={async (file) => { const res = await onUpload(file); if (res?.needs_mapping) setMapping(res) }} />
+          <UploadCard onUpload={onUpload} />
           <XSearchCard onSearch={onXSearch} configured={xConfigured} />
         </div>
 
@@ -67,30 +47,25 @@ export function DatasetsView({ datasets, currentId, onOpen, onAnalyze, onDelete,
                       <div className="font-medium">{d.name}</div>
                       {d.description && <div className="text-xs text-muted mt-0.5 max-w-md">{d.description}</div>}
                       <div className="text-xs font-mono text-faint mt-0.5">
-                        {d.source === 'x_api' ? `X search · fetched ${fmtTime(d.fetched_at, true)}` : d.id}
+                        {d.source === 'x_api' ? `X search · fetched ${fmtTime(d.fetched_at, true)}` : `X API v2 upload · ${d.id}`}
                       </div>
+                      {d.warnings?.map((w) => (
+                        <div key={w} className="flex gap-1 text-xs text-alert mt-0.5 max-w-md"><AlertTriangle className="w-3.5 h-3.5 mt-px shrink-0" aria-hidden />{w}</div>
+                      ))}
                     </td>
                     <td className="px-4 py-3 text-right font-mono tabular-nums">{fmt(d.posts)}</td>
                     <td className="px-4 py-3 text-right font-mono tabular-nums">{fmt(d.accounts)}</td>
                     <td className="px-4 py-3"><StatusBadge dataset={d} /></td>
                     <td className="px-4 py-3">
                       <div className="flex justify-end gap-1">
-                        {d.needs_mapping ? (
-                          <Button variant="primary" onClick={() => chooseColumns(d)}>Choose columns</Button>
-                        ) : (
-                          <>
-                            <Button onClick={() => onOpen(d.id)}>Open</Button>
-                            <Button variant="ghost" disabled={running} onClick={() => onAnalyze(d.id)}>
-                              {d.analyzed ? 'Re-run' : 'Analyse'}
-                            </Button>
-                          </>
-                        )}
-                        {(
-                          <Button variant="ghost" className="px-2 hover:text-urgent" disabled={running}
-                            onClick={() => onDelete(d)} aria-label={`Delete ${d.name}`}>
-                            <Trash2 className="w-4 h-4" />
-                          </Button>
-                        )}
+                        <Button onClick={() => onOpen(d.id)}>Open</Button>
+                        <Button variant="ghost" disabled={running} onClick={() => onAnalyze(d.id)}>
+                          {d.analyzed ? 'Re-run' : 'Analyse'}
+                        </Button>
+                        <Button variant="ghost" className="px-2 hover:text-urgent" disabled={running}
+                          onClick={() => onDelete(d)} aria-label={`Delete ${d.name}`}>
+                          <Trash2 className="w-4 h-4" />
+                        </Button>
                       </div>
                     </td>
                   </tr>
@@ -128,7 +103,7 @@ function UploadCard({ onUpload, className = '' }) {
   }
 
   return (
-    <Card title="Add a dataset" className={className}>
+    <Card title="Upload X API v2 JSON" className={className}>
       <label
         onDragOver={(e) => { e.preventDefault(); setDragging(true) }}
         onDragLeave={() => setDragging(false)}
@@ -137,8 +112,8 @@ function UploadCard({ onUpload, className = '' }) {
       >
         <Upload className="w-6 h-6 text-faint" aria-hidden />
         <span className="text-sm font-medium">{file ? file.name : 'Drop a file here or choose one'}</span>
-        <span className="text-xs text-muted">{file ? `${(file.size / 1e6).toFixed(1)} MB` : 'CSV, Excel, JSON, X API data, WhatsApp or Telegram export'}</span>
-        <input type="file" accept=".csv,.tsv,.xlsx,.json,.jsonl,.ndjson,.txt" className="sr-only" onChange={(e) => e.target.files[0] && pick(e.target.files[0])} />
+        <span className="text-xs text-muted">{file ? `${(file.size / 1e6).toFixed(1)} MB` : '.json or .jsonl, exactly as the X API returned it'}</span>
+        <input type="file" accept=".json,.jsonl" className="sr-only" onChange={(e) => e.target.files[0] && pick(e.target.files[0])} />
       </label>
 
       <Button variant="primary" className="w-full mt-3" disabled={!file || uploading} onClick={submit}>
@@ -148,19 +123,17 @@ function UploadCard({ onUpload, className = '' }) {
       {error && <p className="text-sm text-urgent mt-2">{error}</p>}
 
       <div className="text-xs text-muted mt-4 space-y-2">
-        <p className="font-medium text-ink">Each post needs who posted it, when, and what it says</p>
+        <p className="font-medium text-ink">Only X API v2 output is accepted</p>
         <p>
-          Any column names work: they are matched by name, and if that fails you pick them from the file's first rows.
-          Optional columns (platform, town, links, reply-to, repost-of, account creation date…) each add a signal.
+          A search, timeline or lookup response ({'{'}"data", "includes", "meta"{'}'}), a list of them, one per line, or
+          filtered-stream lines. Each post needs <span className="font-mono">created_at</span> and{' '}
+          <span className="font-mono">author_id</span>; with <span className="font-mono">expansions=author_id</span>,
+          <span className="font-mono"> referenced_tweets</span> and <span className="font-mono">public_metrics</span> every
+          signal and the full post view work. Anything else is refused with the reason.
         </p>
         <p>
-          Read as they are: X API search results and stream output (JSON or JSON Lines, v2 and v1.1), WhatsApp chat
-          exports (.txt), Telegram Desktop exports (result.json), X information-operations archives and the
-          FiveThirtyEight IRA tweets.
-        </p>
-        <p>
-          <a href="/posts-template.csv" download className="text-accent hover:underline">Download an example CSV</a>
-          <span className="text-faint"> · full guide in docs/data-format.md</span>
+          <a href="/x-api-v2-example.json" download className="text-accent hover:underline">Download an example response</a>
+          <span className="text-faint"> · request fields and the database layout in docs/data-model.md</span>
         </p>
       </div>
     </Card>

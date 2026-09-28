@@ -17,7 +17,6 @@ log = logging.getLogger(__name__)
 # Stages reported to the UI while a dataset is analysed (in order)
 STAGES = [
     "Reading posts",
-    "Saving posts",
     "Preparing coordination database",
     *NETWORK_STAGES.values(),
     "Finding, scoring and profiling campaigns",
@@ -50,17 +49,14 @@ def analyze(
 ) -> dict:
     """
     Executes the end-to-end CIB analysis pipeline for a dataset and writes to <output_dir>/<dataset_id>/:
-    posts.json, campaigns.json, samples.json (first posts per campaign), graph.json (Cytoscape), timeline.json.
+    campaigns.json, samples.json (posts sampled per campaign), graph.json (Cytoscape), timeline.json.
+    The posts themselves stay in the dataset's X database (x.db, engine/xstore.py); nothing here copies them.
     """
     start_time = time.perf_counter()
 
     base_dir = output_dir if output_dir is not None else RUNS
     run_dir = base_dir / dataset_id
     run_dir.mkdir(parents=True, exist_ok=True)
-
-    # 1. Save normalized posts.json (no indent: uploads can be 100k+ posts)
-    progress("Saving posts")
-    (run_dir / "posts.json").write_text(json.dumps([p.model_dump() for p in posts]), encoding="utf-8")
 
     # 2. Build multi-signal coordination graph
     G = build_graph(posts, db_path=run_dir / "toolkit.db", window=window, min_weight=min_weight, progress=progress)
@@ -85,7 +81,7 @@ def analyze(
         shutil.rmtree(run_dir / "bob", ignore_errors=True)
     campaigns_path.write_text(json.dumps(new_campaigns, indent=2), encoding="utf-8")
 
-    # 5. First posts of each campaign, so nothing downstream has to reload posts.json
+    # 5. Posts sampled across each campaign, so the UI, Bob and the brief never reload the whole dataset
     progress("Writing graph and timeline")
     posts_by_id = {p.post_id: p for p in posts}
     samples = {c.id: [p.model_dump() for p in spread_sample([posts_by_id[pid] for pid in c.post_ids])] for c in campaigns}

@@ -19,8 +19,8 @@ from fastapi.staticfiles import StaticFiles
 
 from config import (WEB_DIST, RUNS, STREAMS, STREAM_WINDOW_SECONDS, STREAM_RETENTION_SECONDS, MIN_EDGE_WEIGHT,
                     TIME_WINDOW, X_BEARER_TOKEN)
-from engine.normalize import ALIASES, MissingColumns, enrich, load_posts, load_rows, preview
-from scenario.adapters.x_api import XApiError, is_x_data, search_recent, x_posts
+from engine.xstore import NotXApiData, ingest, open_db, posts_from_responses, read_posts
+from connectors.x_search import XApiError, search_recent
 from engine.pipeline import analyze, STAGES
 from engine.schema import Campaign, Post
 from engine.coordination import build_graph
@@ -36,7 +36,7 @@ log = logging.getLogger(__name__)
 
 # ponytail: in-memory job table for this one server process; a restart forgets running jobs (re-run the analysis)
 JOBS: dict[str, dict] = {}
-UPLOAD_TYPES = (".csv", ".tsv", ".xlsx", ".json", ".jsonl", ".ndjson", ".txt")
+UPLOAD_TYPES = (".json", ".jsonl")  # X API v2 JSON only: see engine/xstore.py and docs/data-model.md
 STREAM_DB = STREAMS / "streams.sqlite"
 STREAM_LOCK = threading.RLock()  # ponytail: one worker process only; the graph is rebuilt from the window on every post
 
@@ -67,19 +67,10 @@ def source_file(dataset_id: str, run_dir: Path) -> Path:
 
 
 def dataset_meta(run_dir: Path) -> dict:
-    """Name and counts, stored in meta.json so listing never re-reads the posts."""
+    """Name, counts, clock and ingestion warnings, written to meta.json when the dataset is stored."""
     meta_path = run_dir / "meta.json"
     meta = json.loads(meta_path.read_text(encoding="utf-8")) if meta_path.exists() else {}
-    if meta.get("status") == "needs_mapping":  # uploaded, waiting for the user to say which column is which
-        return {"posts": 0, "accounts": 0, "timezone": "UTC", **meta}
-    if "posts" not in meta:  # runs from older versions: count once, then remember
-        posts = load_posts(source_file(run_dir.name, run_dir), mapping=meta.get("mapping"))
-        meta.update(posts=len(posts), accounts=len({p.account_id for p in posts}), timezone=guess_timezone(posts))
-        meta_path.write_text(json.dumps(meta), encoding="utf-8")
-    if "timezone" not in meta:  # older runs: the incident packs are in India; research archives are in UTC
-        meta["timezone"] = "UTC"
-        meta_path.write_text(json.dumps(meta), encoding="utf-8")
-    return meta
+    return {"posts": 0, "accounts": 0, "timezone": "UTC", "warnings": [], **meta}
 
 
 def load_campaign(run_dir: Path, cid: str) -> Campaign:
@@ -100,7 +91,7 @@ def campaign_summary(c: dict) -> dict:
     return {**{k: v for k, v in c.items() if k not in ("accounts", "post_ids")}, "post_count": len(c["post_ids"])}
 
 
-def run_job(dataset_id: str, source: Path):
+def run_job(dataset_id: str):
     job = JOBS[dataset_id]
 
     def progress(stage: str):
@@ -108,8 +99,13 @@ def run_job(dataset_id: str, source: Path):
 
     try:
         progress("Reading posts")
-        meta = dataset_meta(RUNS / dataset_id)
-        result = analyze(dataset_id, load_posts(source, mapping=meta.get("mapping")), progress=progress, zone=meta["timezone"])
+        run_dir = RUNS / dataset_id
+        db = open_db(run_dir)  # the dataset's X database: the posts view is what gets analysed
+        try:
+            posts = read_posts(db)
+        finally:
+            db.close()
+        result = analyze(dataset_id, posts, progress=progress, zone=dataset_meta(run_dir)["timezone"])
         job.update(state="done", finished=time.time(), campaigns=len(result["campaigns"]), runtime_ms=result["runtime_ms"])
     except Exception as e:
         log.exception("Analysis of %s failed", dataset_id)
@@ -158,15 +154,16 @@ def recompute_stream(stream_id: str, posts: list[Post], latest: int) -> dict:
 
 @app.post("/api/streams/{stream_id}/posts")
 def add_stream_post(stream_id: str, payload: dict | list[dict] = Body(...)):
-    """One post, or a list of posts (one graph rebuild per request, which takes a few seconds)."""
+    """X API v2 filtered-stream lines ({"data": {...}, "includes": ..., "matching_rules": ...}) or response pages,
+    one or a list (one graph rebuild per request, which takes a few seconds)."""
     validate_stream_id(stream_id)
     rows = payload if isinstance(payload, list) else [payload]
     if not rows or not all(rows):
         raise HTTPException(status_code=422, detail="Post payload cannot be empty")
     try:
-        new_posts = enrich(x_posts(rows) if is_x_data(rows) else load_rows(rows, list(dict.fromkeys(k for r in rows for k in r))))
-    except (ValueError, TypeError) as e:
-        raise HTTPException(status_code=422, detail=str(e))
+        new_posts = posts_from_responses(rows)
+    except (ValueError, TypeError, KeyError) as e:
+        raise HTTPException(status_code=422, detail=f"Not X API v2 data: {e}")
     with STREAM_LOCK:
         try:
             duplicates = [ingest_stream_post(STREAM_DB, stream_id, p, STREAM_RETENTION_SECONDS) for p in new_posts]
@@ -215,8 +212,8 @@ def finish_stream(stream_id: str):
 def list_datasets():
     datasets = []
     for d in sorted(RUNS.iterdir()) if RUNS.exists() else []:
-        if not d.is_dir():
-            continue
+        if not d.is_dir() or not (d / "x.db").exists():
+            continue  # every dataset is an X database; anything else in the folder is not a dataset
         try:
             meta = dataset_meta(d)
         except Exception:
@@ -232,7 +229,7 @@ def list_datasets():
             "timezone": meta["timezone"],
             # results from older versions lack samples.json and must be re-run
             "analyzed": (d / "campaigns.json").exists() and (d / "samples.json").exists(),
-            "needs_mapping": meta.get("status") == "needs_mapping",
+            "warnings": meta["warnings"],
             "source": meta.get("source"),
             "fetched_at": meta.get("fetched_at"),
             "job": JOBS.get(d.name, {"state": "idle"}),
@@ -255,51 +252,23 @@ def upload_dataset(file: UploadFile = File(...)):
         shutil.copyfileobj(file.file, f)
 
     try:
-        posts = load_posts(upload_path)
-        if not posts:
-            raise ValueError("no posts found")
-    except MissingColumns:
-        (dataset_dir / "meta.json").write_text(json.dumps({"name": name, "status": "needs_mapping"}), encoding="utf-8")
-        return {"dataset_id": dataset_id, "name": name, "needs_mapping": True, **preview(upload_path)}
-    except Exception as e:
+        posts, warnings = ingest(upload_path, dataset_dir / "x.db")
+    except (NotXApiData, KeyError, TypeError) as e:
         shutil.rmtree(dataset_dir, ignore_errors=True)
-        raise HTTPException(status_code=422, detail=f"Could not read this file: {e}")
-
-    return {"dataset_id": dataset_id, **save_meta(dataset_dir, posts, name=name)}
+        raise HTTPException(status_code=422, detail=f"Not X API v2 data: {e}")
+    return {"dataset_id": dataset_id, **save_meta(dataset_dir, posts, name=name, warnings=warnings)}
 
 
 def save_meta(run_dir: Path, posts: list[Post], **extra) -> dict:
-    meta_path = run_dir / "meta.json"
-    meta = json.loads(meta_path.read_text(encoding="utf-8")) if meta_path.exists() else {}
-    meta.pop("status", None)
-    meta.update(extra, posts=len(posts), accounts=len({p.account_id for p in posts}), timezone=guess_timezone(posts))
-    meta_path.write_text(json.dumps(meta, ensure_ascii=False), encoding="utf-8")
+    meta = {"format": "X API v2", **extra, "posts": len(posts), "accounts": len({p.account_id for p in posts}),
+            "timezone": guess_timezone(posts)}
+    (run_dir / "meta.json").write_text(json.dumps(meta, ensure_ascii=False), encoding="utf-8")
     return meta
-
-
-@app.get("/api/datasets/{dataset_id}/columns")
-def get_columns(dataset_id: str):
-    """The file's columns, first rows and the suggested (or saved) column for each field."""
-    run_dir = run_dir_for(dataset_id)
-    meta = dataset_meta(run_dir)
-    return {"dataset_id": dataset_id, "name": meta.get("name"), **preview(source_file(dataset_id, run_dir), meta.get("mapping"))}
-
-
-@app.post("/api/datasets/{dataset_id}/mapping")
-def set_mapping(dataset_id: str, body: dict = Body(...)):
-    """Read the file with the columns the user chose ({"mapping": {"account_id": "Poster", ...}})."""
-    run_dir = run_dir_for(dataset_id)
-    mapping = {k: v for k, v in (body.get("mapping") or {}).items() if k in ALIASES and isinstance(v, str) and v}
-    try:
-        posts = load_posts(source_file(dataset_id, run_dir), mapping=mapping)
-    except ValueError as e:
-        raise HTTPException(status_code=422, detail=str(e))
-    return {"dataset_id": dataset_id, **save_meta(run_dir, posts, mapping=mapping)}
 
 
 @app.post("/api/connectors/x/search")
 def x_search(body: dict = Body(...)):
-    """Pull recent posts matching an X search query (e.g. '#RajpuraBachao OR "bachcha chor"') into a new dataset."""
+    """Pull recent posts matching an X search query (e.g. '#RedFort OR "tractor rally"') into a new dataset."""
     query = str(body.get("query") or "").strip()
     if not query:
         raise HTTPException(status_code=422, detail="Enter a search query")
@@ -309,16 +278,19 @@ def x_search(body: dict = Body(...)):
         pages = search_recent(query, X_BEARER_TOKEN, max_posts=min(int(body.get("max_posts") or 500), 5000))
     except XApiError as e:
         raise HTTPException(status_code=502, detail=str(e))
-    posts = enrich(x_posts(pages))
-    if not posts:
-        raise HTTPException(status_code=404, detail="X returned no posts for this query in the last 7 days")
     dataset_id = f"x_{uuid.uuid4().hex[:6]}"
     run_dir = RUNS / dataset_id
     run_dir.mkdir(parents=True)
-    # the raw API pages are kept as the source file (one page per line), so the dataset re-reads like any upload
-    (run_dir / "upload.jsonl").write_text("\n".join(json.dumps(pg, ensure_ascii=False) for pg in pages), encoding="utf-8")
+    # the API pages exactly as returned are the dataset's source file (one page per line), stored like an upload
+    source = run_dir / "upload.jsonl"
+    source.write_text("\n".join(json.dumps(pg, ensure_ascii=False) for pg in pages), encoding="utf-8")
+    try:
+        posts, warnings = ingest(source, run_dir / "x.db")
+    except NotXApiData as e:
+        shutil.rmtree(run_dir, ignore_errors=True)
+        raise HTTPException(status_code=404, detail=f"X returned no usable posts for this query: {e}")
     meta = save_meta(run_dir, posts, name=f"X search: {query}", source="x_api", query=query,
-                     fetched_at=int(time.time()))
+                     fetched_at=int(time.time()), warnings=warnings)
     return {"dataset_id": dataset_id, **meta}
 
 
@@ -340,10 +312,11 @@ def delete_dataset(dataset_id: str):
 @app.post("/api/datasets/{dataset_id}/analyze", status_code=202)
 def start_analysis(dataset_id: str):
     """Starts analysis in the background; poll /job for progress."""
-    source = source_file(dataset_id, run_dir_for(dataset_id))
+    if not (run_dir_for(dataset_id) / "x.db").exists():
+        raise HTTPException(status_code=404, detail=f"Dataset {dataset_id} not found")
     if JOBS.get(dataset_id, {}).get("state") != "running":
         JOBS[dataset_id] = {"state": "running", "step": 0, "stages": STAGES, "started": time.time()}
-        threading.Thread(target=run_job, args=(dataset_id, source), daemon=True).start()
+        threading.Thread(target=run_job, args=(dataset_id,), daemon=True).start()
     return JOBS[dataset_id]
 
 

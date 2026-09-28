@@ -139,7 +139,7 @@ Open **http://localhost:5173** — changes reload instantly and `/api` calls are
 
 ### Verify it works
 
-1. The app starts empty on **Datasets**. Upload an export (for example `data/raw/russian_ira_trolls_2015.csv`, see [Real datasets](#real-datasets)) or search X. If the column names aren't recognised, pick them in the "Which column is which?" step. The analysis starts automatically and shows each step.
+1. The app starts empty on **Datasets**. Upload X API v2 JSON (try `src/web/public/x-api-v2-example.json`) or search X. The analysis starts automatically and shows each step.
 2. **Overview** opens with a summary paragraph of what was found, any planned gatherings IBM Bob has extracted, the incident timeline and the campaign table. Select a campaign: the detail panel shows how it spread, who started it and why it was flagged.
 3. Press **Ask IBM Bob** on a campaign for its threat type, target, severity, any call to gather and legal sections to check (needs the key).
 4. **Network** shows who coordinated with whom; the accounts that started a campaign have a thick ring.
@@ -154,23 +154,17 @@ The server binds to `127.0.0.1` by default. The prototype has no login; do not e
 
 ## Using Your Own Data
 
-Upload a CSV/TSV, Excel file, JSON or JSON Lines, X API data (search results, stream output, twarc exports), a WhatsApp chat export (`.txt`) or a Telegram Desktop export (`result.json`) on the **Datasets** page, or search X from the same page. Each post needs three things: the account that posted it, the time, and the text; platform and town columns are used when present. Column names are recognised automatically (`user_id`, `author`, `timestamp`, `content`, …); when they aren't, the app shows the first rows and asks which column is which. No cleaning is needed, and links and hashtags are taken from the text when there is no column for them. Full list of accepted columns and time formats: [`data-format.md`](data-format.md). Template: `src/web/public/posts-template.csv`.
+Upload **X API v2 JSON** on the **Datasets** page, exactly as the API returned it: a search, timeline or lookup response, a list of them, one per line, or filtered-stream lines. Each post needs `created_at` and `author_id` (`tweet.fields=created_at,author_id`); the recommended fields, an example and the database layout are in [`data-model.md`](data-model.md).
 
 Text-only datasets (for example CONSTRAINT or HASOC) have no account or time and are rejected with a message saying what is missing.
 
 ---
 
-### Real datasets
+### Datasets
 
-The app ships without data. Public datasets that work as they are (save them in `data/raw/`, which is not committed):
-
-| Dataset | Where | Notes |
-|---|---|---|
-| FiveThirtyEight IRA tweets | github.com/fivethirtyeight/russian-troll-tweets (`IRAhandle_tweets_1.csv` …) | 243k tweets per file; the app analyses the whole file (about 5 min) |
-| X information-operations archives | transparency.x.com (information operations) | Unhashed or hashed CSVs with retweet and reply fields and account creation dates |
-| Your own exports | X API (search/stream), WhatsApp, Telegram, any CSV/Excel/JSON | See [`data-format.md`](data-format.md) |
-
-`python src/eval/measure.py` analyses every file in `data/raw` and writes `src/eval/results.md`.
+The app ships without data. Collect posts with the X API v2 (recent or full-archive search, user timelines, filtered
+stream) using the fields in [`data-model.md`](data-model.md), save the responses unchanged as `.json` or `.jsonl`, and
+upload them. `python src/eval/measure.py` analyses every X API v2 file in `data/raw` and writes `src/eval/results.md`.
 
 ## Using the Bob Investigation Console (MCP)
 

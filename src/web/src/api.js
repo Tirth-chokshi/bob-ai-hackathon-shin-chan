@@ -26,8 +26,6 @@ export const api = {
     return req('POST', '/datasets', formData)
   },
   remove: (id) => req('DELETE', `/datasets/${id}`),
-  columns: (id) => req('GET', `/datasets/${id}/columns`),
-  mapping: (id, mapping) => req('POST', `/datasets/${id}/mapping`, JSON.stringify({ mapping }), true),
   xSearch: (query, max_posts) => req('POST', '/connectors/x/search', JSON.stringify({ query, max_posts }), true),
   analyze: (id) => req('POST', `/datasets/${id}/analyze`),
   campaigns: (id) => req('GET', `/datasets/${id}/campaigns`),

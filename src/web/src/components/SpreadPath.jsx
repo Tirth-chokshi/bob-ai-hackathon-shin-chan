@@ -2,7 +2,7 @@ import React from 'react'
 import { ArrowRight } from 'lucide-react'
 import { fmtWhen, platformLabel } from '../labels'
 
-// Platform or town hops in the order the campaign reached them: WhatsApp 10:02 → X 10:48 → …
+// Places (or platforms) in the order the campaign reached them: Delhi 10:02 → Ludhiana 10:48 → …
 export function SpreadPath({ path, kind, span = 0 }) {
   if (!path?.length) return <p className="text-xs text-faint">No {kind} information in this dataset.</p>
   return (

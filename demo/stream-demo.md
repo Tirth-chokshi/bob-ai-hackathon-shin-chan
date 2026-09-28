@@ -1,6 +1,6 @@
 # Stream API Demo (mock posts)
 
-This walkthrough demonstrates the rolling-window API with fictional posts. It does not contact a platform, predict violence, or classify accounts as bots.
+This walkthrough demonstrates the rolling-window API with fictional posts, sent as X API v2 filtered-stream lines (the only accepted format; see `docs/data-model.md`). It does not contact a platform, predict violence, or classify accounts as bots.
 
 ## Start
 
@@ -21,15 +21,23 @@ BASE=http://127.0.0.1:8000/api/streams
 STREAM_ID="mock-incident-$(date +%s)"
 NOW=$(date +%s)
 
-curl -fsS -X POST "$BASE/$STREAM_ID/posts" -H 'Content-Type: application/json' \
-  -d "{\"post_id\":\"base-1\",\"account_id\":\"local-1\",\"created_at\":$NOW,\"text\":\"Fictional weather update for Maple District.\"}"
-curl -fsS -X POST "$BASE/$STREAM_ID/posts" -H 'Content-Type: application/json' \
-  -d "{\"post_id\":\"base-2\",\"account_id\":\"local-2\",\"created_at\":$((NOW + 1)),\"text\":\"The library will close early today.\"}"
+iso() { date -u -d "@$1" +%Y-%m-%dT%H:%M:%S.000Z; }  # macOS: date -u -r "$1" +%Y-%m-%dT%H:%M:%S.000Z
+
+# One X API v2 filtered-stream line, as X sends it: post ID, author ID, seconds after NOW, text
+post() {
+  curl -fsS -X POST "$BASE/$STREAM_ID/posts" -H 'Content-Type: application/json' -d "{
+    \"data\": {\"id\": \"$1\", \"author_id\": \"$2\", \"created_at\": \"$(iso $((NOW + $3)))\", \"text\": \"$4\"},
+    \"includes\": {\"users\": [{\"id\": \"$2\", \"username\": \"user_$2\"}]},
+    \"matching_rules\": [{\"id\": \"1\", \"tag\": \"maple\"}]}"
+}
+
+post 1001 501 0 "Fictional weather update for Maple District."
+post 1002 502 1 "The library will close early today."
 
 for wave in 1 2; do
   for i in 1 2 3 4 5; do
-    curl -fsS -X POST "$BASE/$STREAM_ID/posts" -H 'Content-Type: application/json' \
-      -d "{\"post_id\":\"burst-$wave-$i\",\"account_id\":\"fictional-$i\",\"created_at\":$((NOW + wave * 10 + i + 2)),\"text\":\"Unverified notice: meet at fictional Maple Hall at 19:00 for a public discussion. #MapleNotice\",\"urls\":[\"https://example.invalid/maple-notice\"]}"
+    post "2${wave}0${i}" "60${i}" $((wave * 10 + i + 2)) \
+      "Unverified notice: meet at fictional Maple Hall at 19:00 for a public discussion. #MapleNotice https://example.invalid/maple-notice"
   done
 done
 

@@ -7,8 +7,8 @@ The **Social Media Threat Intelligence Engine** is a pipeline with five parts: a
 ```mermaid
 graph TD
     subgraph Ingestion_Layer ["1. Ingestion"]
-        A1[File upload, X search or stream] --> B[Normalizer: common schema]
-        A2[Research datasets CSV/JSON] --> B
+        A1[X API v2 JSON: upload, X search or filtered stream] --> A2[Checked and stored: x.db, one table per X object]
+        A2 --> B[posts view: the engine's input]
     end
 
     subgraph Forensic_Pipeline ["2. CIB Engine"]
@@ -44,8 +44,8 @@ graph TD
 | **API Server** | FastAPI / Uvicorn (Python 3.10+) | Endpoints for dataset upload, analysis, campaigns, graph data, Bob classification, and brief export; serves the static frontend. |
 | **Coordination Detection** | coordination-network-toolkit (QUT, MIT) + SQLite | Builds account-to-account coordination networks within configurable time windows. |
 | **Campaign Discovery & Scoring** | NetworkX, Python | Community detection on the merged graph; explainable per-feature CIB score. |
-| **Ingestion** | Python (`engine/normalize.py`, `scenario/adapters/`) | CSV/TSV, Excel, JSON (nested JSON flattened), JSON Lines, X API v2/v1.1 data, WhatsApp and Telegram exports. Columns matched by name, else a column-matching step suggests them from the values. Language detected by script and common words; times without a zone read in the dataset's clock (`engine/zones.py`). |
-| **X connector** | httpx (`scenario/adapters/x_api.py`) | `POST /api/connectors/x/search`: X recent search with author, retweet, reply and place expansions, following `next_token`; raw pages kept as the dataset's source. Needs `X_BEARER_TOKEN`. |
+| **Ingestion & storage** | Python + SQLite (`engine/xstore.py`) | X API v2 JSON only (responses, pages, filtered-stream lines), checked for the fields the analysis needs; stored per dataset in `x.db` with one table per X API object (tweets, users, referenced_tweets, entities, places, media) and a `posts` view the engine reads. See [`data-model.md`](data-model.md). |
+| **X connector** | httpx (`connectors/x_search.py`) | `POST /api/connectors/x/search`: X recent search with the recommended fields and expansions, following `next_token`; the pages are stored like an upload. Needs `X_BEARER_TOKEN`. |
 | **Stream API** | FastAPI + SQLite (`engine/streaming.py`) | `POST /api/streams/{id}/posts` takes one post or a list; posts are kept by event time (24 h), and each request re-runs detection on the last 3 hours and returns a provisional alert. Duplicate IDs are idempotent; changed content under an old ID is refused. Demonstration only: 5–8 s per rebuild. Guide: [`../demo/stream-demo.md`](../demo/stream-demo.md). |
 | **Spread Profile** | Python (`engine/incident.py`) | Per campaign: first posters, amplifiers, platform and town paths with times, spread speed, share of new accounts, and the earliest time the detection rule was met (lead time before a planned gathering). |
 | **Threat Analysis** | IBM Bob headless (`bob run --format json`), `BOB_API_KEY`, prompt via stdin | Classifies each campaign from its analysis and 20 posts sampled across it (Hindi, Hinglish or English), extracts target, narrative and any **planned offline gathering** (what, where, when), chooses legal-table IDs, cites evidence post IDs. Validated in code (place must be quoted from a post, time plausible) and cached as JSON (~0.035 Bobcoins, ~20 s per campaign). |

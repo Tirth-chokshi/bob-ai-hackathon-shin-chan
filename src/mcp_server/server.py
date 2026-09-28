@@ -9,6 +9,7 @@ if str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
 
 from config import RUNS
+from engine.xstore import open_db, read_posts
 
 mcp = FastMCP("threat-intel")
 
@@ -113,14 +114,16 @@ def timeline(dataset_id: str, campaign_id: str | None = None) -> list[dict]:
 def account_profile(dataset_id: str, account_id: str) -> dict:
     """Returns the operational profile of an account: age, post history, and campaign memberships."""
     run_dir = RUNS / dataset_id
-    posts_file = run_dir / "posts.json"
     camp_file = run_dir / "campaigns.json"
 
-    if not posts_file.exists():
+    if not (run_dir / "x.db").exists():
         return {"error": f"Dataset {dataset_id} not found"}
 
-    with open(posts_file, encoding="utf-8") as f:
-        all_posts = json.load(f)
+    db = open_db(run_dir)  # the dataset's X database
+    try:
+        all_posts = [p.model_dump() for p in read_posts(db)]
+    finally:
+        db.close()
 
     acc_posts = [p for p in all_posts if p.get("account_id") == account_id]
     if not acc_posts:
