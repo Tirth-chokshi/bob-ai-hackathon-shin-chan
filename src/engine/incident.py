@@ -88,7 +88,7 @@ def profile_campaign(accounts: list[str], posts: list[Post], G: nx.Graph, window
         if p.account_id not in seen:
             seen.add(p.account_id)
             seeds.append({
-                "account_id": p.account_id, "username": p.username, "platform": p.platform, "city": p.city,
+                "account_id": p.account_id, "username": p.username, "platform": p.platform,
                 "first_seen": p.created_at, "post_id": p.post_id, "text": p.text[:160],
                 "account_age_days": (p.created_at - p.account_created_at) // 86400 if p.account_created_at else None,
             })

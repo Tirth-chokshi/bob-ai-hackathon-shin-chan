@@ -298,12 +298,6 @@ export function PropagationFlow({
                               {platformLabel(s.platform).label}
                             </span>
                           )}
-                          {s.city && (
-                            <span className="inline-flex items-center gap-1">
-                              <MapPin className="w-3 h-3 text-faint" />
-                              {s.city}
-                            </span>
-                          )}
                           {s.first_seen && (
                             <span className="inline-flex items-center gap-1 font-mono text-[10px]">
                               <Clock className="w-3 h-3 text-faint" />

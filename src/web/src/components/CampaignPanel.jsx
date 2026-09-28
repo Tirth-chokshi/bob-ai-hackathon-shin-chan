@@ -167,7 +167,6 @@ export function CampaignPanel({ datasetId, campaignId, bobConfigured, onAssessed
                     <button onClick={() => onFilter({ account: s.account_id })} className="font-medium text-sm truncate cursor-pointer hover:text-accent hover:underline">{s.username}</button>
                     {s.platform && <PlatformChip platform={s.platform} />}
                     <span className="font-mono text-muted">{when(s.first_seen)}</span>
-                    {s.city && <span className="text-muted">· {s.city}</span>}
                     {s.account_age_days != null && (
                       <span className={s.account_age_days < 30 ? 'text-urgent' : 'text-muted'}>· account {s.account_age_days} days old</span>
                     )}
