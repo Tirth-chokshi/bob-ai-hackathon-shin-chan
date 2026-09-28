@@ -127,3 +127,19 @@ export function PageHeader({ title, subtitle, action }) {
     </div>
   )
 }
+
+// A rendering error in one view shows this card instead of a blank page; switching dataset or view resets it
+export class ErrorBoundary extends React.Component {
+  state = { error: null }
+  static getDerivedStateFromError(error) { return { error } }
+  componentDidUpdate(prev) { if (prev.resetKey !== this.props.resetKey && this.state.error) this.setState({ error: null }) }
+  render() {
+    if (!this.state.error) return this.props.children
+    return (
+      <StateCard title="This view couldn't be shown">
+        Something in this dataset's results could not be displayed ({String(this.state.error.message ?? this.state.error)}).
+        Try another view or dataset, or re-run the analysis.
+      </StateCard>
+    )
+  }
+}

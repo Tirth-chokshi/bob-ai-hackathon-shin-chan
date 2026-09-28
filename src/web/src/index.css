@@ -19,8 +19,8 @@
   --color-monitor-soft: var(--monitor-soft);
   --color-benign: var(--benign);
   --color-benign-soft: var(--benign-soft);
-  --font-sans: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-  --font-mono: ui-monospace, "Cascadia Mono", "SF Mono", Consolas, monospace;
+  --font-sans: "IBM Plex Sans", "IBM Plex Sans Devanagari", system-ui, "Segoe UI", Roboto, Arial, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, "Cascadia Mono", Consolas, monospace;
 }
 
 :root,
@@ -75,4 +75,38 @@ body {
   color: var(--ink);
   font-size: 14px;
   -webkit-font-smoothing: antialiased;
+}
+
+/* Browser surfaces in the theme's colours */
+::selection { background: color-mix(in srgb, var(--accent) 25%, transparent); }
+* { scrollbar-width: thin; scrollbar-color: var(--line) transparent; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+input, textarea, select { caret-color: var(--accent); }
+
+/* Posts view: X's own palette (light, and "Dim" for the dark theme) and system font, so posts read like x.com */
+.x-feed {
+  --x-bg: #ffffff;
+  --x-ink: #0f1419;
+  --x-gray: #536471;
+  --x-line: #eff3f4;
+  --x-thread: #cfd9de;
+  --x-hover: rgba(0, 0, 0, 0.03);
+  --x-panel: #f7f9f9;
+  --x-input: #eff3f4;
+  --x-blue: #1d9bf0;
+  --x-green: #00ba7c;
+  --x-pink: #f91880;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, "IBM Plex Sans Devanagari", sans-serif;
+  color: var(--x-ink);
+}
+:root[data-theme="dark"] .x-feed,
+:root.dark .x-feed {
+  --x-bg: #15202b;
+  --x-ink: #f7f9f9;
+  --x-gray: #8b98a5;
+  --x-line: #38444d;
+  --x-thread: #425364;
+  --x-hover: rgba(255, 255, 255, 0.03);
+  --x-panel: #1e2732;
+  --x-input: #273340;
 }

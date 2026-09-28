@@ -24,7 +24,7 @@ Before you begin, ensure you have the following installed on your machine:
 
 Headless `bob run` requires a key even when Bob Shell is signed in. Never commit the key or paste it into chats; `src/.env` is already in `.gitignore`.
 
-**No key?** The app still runs: detection, scoring, the network graph and escalation work, and Bob's results are shown from the cache for the bundled demo run. Only new Bob analysis needs a key.
+**No key?** The app still runs: detection, scoring, the network graph and escalation work, and Bob's saved results are shown for campaigns already assessed. Only new Bob analysis needs a key.
 
 ---
 
@@ -48,6 +48,9 @@ On Windows (PowerShell): `Copy-Item src/.env.example src/.env`
 | `TIMEZONE` | Timezone for brief timestamps | Optional (Default: Asia/Kolkata) |
 | `TIME_WINDOW_SECONDS` | Coordination time window | Optional (Default: 60) |
 | `MIN_EDGE_WEIGHT` | Minimum times two accounts must coordinate | Optional (Default: 2) |
+| `STREAM_WINDOW_SECONDS` | Event-time window for provisional stream alerts | Optional (Default: 10800, 3 hours) |
+| `STREAM_RETENTION_SECONDS` | How long stream posts are kept (event time) | Optional (Default: 86400) |
+| `X_BEARER_TOKEN` | X API token for **Datasets → Search X** (plan must include recent search) | Optional |
 
 ---
 
@@ -136,21 +139,38 @@ Open **http://localhost:5173** — changes reload instantly and `/api` calls are
 
 ### Verify it works
 
-1. The app opens on **Overview** for the demo dataset: 4 campaigns ranked by coordination score, with 3 marked Urgent. The cricket decoy (C4) ranks lowest and is marked Monitor.
-2. Select a campaign: the panel shows why it was flagged, IBM Bob's saved assessment and its first posts.
-3. **Network** shows the same campaigns as a graph; click a dot to open its campaign.
-4. **Brief** → **Print or save as PDF** produces the time-stamped threat brief.
-5. Optional: **Datasets** → upload a CSV (for example `data/raw/ira_1.csv`). The analysis starts automatically and shows each step; the full IRA file takes about 5 minutes.
+1. The app starts empty on **Datasets**. Upload an export (for example `data/raw/russian_ira_trolls_2015.csv`, see [Real datasets](#real-datasets)) or search X. If the column names aren't recognised, pick them in the "Which column is which?" step. The analysis starts automatically and shows each step.
+2. **Overview** opens with a summary paragraph of what was found, any planned gatherings IBM Bob has extracted, the incident timeline and the campaign table. Select a campaign: the detail panel shows how it spread, who started it and why it was flagged.
+3. Press **Ask IBM Bob** on a campaign for its threat type, target, severity, any call to gather and legal sections to check (needs the key).
+4. **Network** shows who coordinated with whom; the accounts that started a campaign have a thick ring.
+5. **Posts** lists every post; click any account, hashtag or town (here or in the campaign panel) to filter to it.
+6. **Brief** → **Print or save as PDF** produces the time-stamped threat brief.
+
+Posts can also be sent one at a time to the rolling-window stream API (`/api/streams/{id}/posts`), which returns a provisional coordination alert after each post; see [`../demo/stream-demo.md`](../demo/stream-demo.md). It rebuilds the graph from the window on every post, so it suits a local demonstration, not production volumes.
+
+The server binds to `127.0.0.1` by default. The prototype has no login; do not expose it on a public or shared network.
 
 ---
 
 ## Using Your Own Data
 
-Upload a CSV or JSON on the **Datasets** page. Each row is one post and needs three things: the account that posted it, the time, and the text. Column names are recognised automatically (`user_id`, `author`, `timestamp`, `content`, …), no cleaning is needed, and links and hashtags are taken from the text when there is no column for them. Full list of accepted columns and time formats: [`data-format.md`](data-format.md). Template: `src/web/public/posts-template.csv`.
+Upload a CSV/TSV, Excel file, JSON or JSON Lines, X API data (search results, stream output, twarc exports), a WhatsApp chat export (`.txt`) or a Telegram Desktop export (`result.json`) on the **Datasets** page, or search X from the same page. Each post needs three things: the account that posted it, the time, and the text; platform and town columns are used when present. Column names are recognised automatically (`user_id`, `author`, `timestamp`, `content`, …); when they aren't, the app shows the first rows and asks which column is which. No cleaning is needed, and links and hashtags are taken from the text when there is no column for them. Full list of accepted columns and time formats: [`data-format.md`](data-format.md). Template: `src/web/public/posts-template.csv`.
 
 Text-only datasets (for example CONSTRAINT or HASOC) have no account or time and are rejected with a message saying what is missing.
 
 ---
+
+### Real datasets
+
+The app ships without data. Public datasets that work as they are (save them in `data/raw/`, which is not committed):
+
+| Dataset | Where | Notes |
+|---|---|---|
+| FiveThirtyEight IRA tweets | github.com/fivethirtyeight/russian-troll-tweets (`IRAhandle_tweets_1.csv` …) | 243k tweets per file; the app analyses the whole file (about 5 min) |
+| X information-operations archives | transparency.x.com (information operations) | Unhashed or hashed CSVs with retweet and reply fields and account creation dates |
+| Your own exports | X API (search/stream), WhatsApp, Telegram, any CSV/Excel/JSON | See [`data-format.md`](data-format.md) |
+
+`python src/eval/measure.py` analyses every file in `data/raw` and writes `src/eval/results.md`.
 
 ## Using the Bob Investigation Console (MCP)
 
@@ -160,7 +180,7 @@ After a dataset has been analysed in the web app:
 2. Run `bob chat` (signed in with your IBMid).
 3. Switch mode: `/mode osint-analyst`.
 4. Check the tools: `/mcp` should list the `threat-intel` server (configured in `.bob/mcp.json`).
-5. Ask, for example: *"List the campaigns in the demo dataset and tell me which accounts started campaign 1."*
+5. Ask, for example: *"List my datasets, then the campaigns in the newest one, and tell me which accounts started campaign 1."*
 
 The MCP server is read-only: it can only read analysis results from `data/runs/`.
 
@@ -172,7 +192,7 @@ The MCP server is read-only: it can only read analysis results from `data/runs/`
 python -m pytest src/tests
 ```
 
-The engine test generates the demo scenario and checks that all planted campaigns are detected and the decoy ranks lowest.
+The engine test builds a small post batch at test time (`src/tests/fixtures.py`: ordinary posters plus two planted rings) and checks that both rings are found, nothing else is, and no ordinary poster is clustered. Nothing is stored or shown in the app.
 
 ---
 

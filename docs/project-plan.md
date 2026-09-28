@@ -495,7 +495,7 @@ data/runs/<dataset_id>/
 
 ## 12. Frontend
 
-React 19 single-page app in `src/web/`, built with Vite. The visual language, tokens and page layout are defined in [`design-system.md`](design-system.md). Four pages; the current page and dataset are kept in the URL (`#/overview/demo`), so reload and Back work.
+React 19 single-page app in `src/web/`, built with Vite. The visual language, tokens and page layout are defined in [`design-system.md`](design-system.md). Four pages; the current page and dataset are kept in the URL (`#/overview/demo`), so reload and Back work. The Overview leads with the planned offline gatherings, then an incident timeline, the campaign table, a district spread map and the detail panel.
 
 | Page | Contents |
 |---|---|
@@ -637,7 +637,7 @@ src/
   mcp_server/ server.py
   web/      React + Vite app (see Section 12); dist/ is build output (gitignored)
   scenario/ generate_scenario.py  adapters/  download_datasets.py
-  samples/  scenario_posts.csv  truth.json  demo_run/ (pre-analysed run incl. cached Bob verdicts)
+  samples/  packs/ (3 incident packs with ground truth)  demo_runs/ (their pre-analysed runs incl. cached Bob verdicts)
   eval/     measure.py
   tests/    test_engine.py
   requirements.txt  .env.example  README.md  main.py
@@ -645,7 +645,7 @@ data/       (gitignored) downloaded datasets + runtime output data/runs/<dataset
 docs/  demo/  presentation/  submission.yaml  README.md
 ```
 
-`src/main.py` starts the app (`uvicorn api.main:app`) and serves `src/web/dist/`. Large datasets stay out of git (`download_datasets.py` fetches them). `src/.env` (holds `BOB_API_KEY`) and the root `data/` folder are gitignored; the bundled `src/samples/demo_run/` is committed so judges can see full results, including Bob verdicts, without a key. On first start the app copies `demo_run` into `data/runs/demo`.
+`src/main.py` starts the app (`uvicorn api.main:app`) and serves `src/web/dist/`. Large datasets stay out of git (`download_datasets.py` fetches them). `src/.env` (holds `BOB_API_KEY`) and the root `data/` folder are gitignored; the bundled `src/samples/demo_runs/` are committed so judges can see full results, including Bob verdicts, without a key. On first start the app copies each into `data/runs/<pack>`.
 
 ---
 

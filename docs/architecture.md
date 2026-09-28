@@ -7,7 +7,7 @@ The **Social Media Threat Intelligence Engine** is a pipeline with five parts: a
 ```mermaid
 graph TD
     subgraph Ingestion_Layer ["1. Ingestion"]
-        A1[Synthetic post batch] --> B[Normalizer: common schema]
+        A1[File upload, X search or stream] --> B[Normalizer: common schema]
         A2[Research datasets CSV/JSON] --> B
     end
 
@@ -44,11 +44,15 @@ graph TD
 | **API Server** | FastAPI / Uvicorn (Python 3.10+) | Endpoints for dataset upload, analysis, campaigns, graph data, Bob classification, and brief export; serves the static frontend. |
 | **Coordination Detection** | coordination-network-toolkit (QUT, MIT) + SQLite | Builds account-to-account coordination networks within configurable time windows. |
 | **Campaign Discovery & Scoring** | NetworkX, Python | Community detection on the merged graph; explainable per-feature CIB score. |
-| **Threat Analysis** | IBM Bob headless (`bob run --format json`), `BOB_API_KEY`, prompt via stdin | Classifies each campaign, extracts target and narrative, chooses legal-table IDs, cites evidence post IDs. Validated with Pydantic and cached as JSON (~0.025 Bobcoins, ~11 s per campaign in testing). |
+| **Ingestion** | Python (`engine/normalize.py`, `scenario/adapters/`) | CSV/TSV, Excel, JSON (nested JSON flattened), JSON Lines, X API v2/v1.1 data, WhatsApp and Telegram exports. Columns matched by name, else a column-matching step suggests them from the values. Language detected by script and common words; times without a zone read in the dataset's clock (`engine/zones.py`). |
+| **X connector** | httpx (`scenario/adapters/x_api.py`) | `POST /api/connectors/x/search`: X recent search with author, retweet, reply and place expansions, following `next_token`; raw pages kept as the dataset's source. Needs `X_BEARER_TOKEN`. |
+| **Stream API** | FastAPI + SQLite (`engine/streaming.py`) | `POST /api/streams/{id}/posts` takes one post or a list; posts are kept by event time (24 h), and each request re-runs detection on the last 3 hours and returns a provisional alert. Duplicate IDs are idempotent; changed content under an old ID is refused. Demonstration only: 5–8 s per rebuild. Guide: [`../demo/stream-demo.md`](../demo/stream-demo.md). |
+| **Spread Profile** | Python (`engine/incident.py`) | Per campaign: first posters, amplifiers, platform and town paths with times, spread speed, share of new accounts, and the earliest time the detection rule was met (lead time before a planned gathering). |
+| **Threat Analysis** | IBM Bob headless (`bob run --format json`), `BOB_API_KEY`, prompt via stdin | Classifies each campaign from its analysis and 20 posts sampled across it (Hindi, Hinglish or English), extracts target, narrative and any **planned offline gathering** (what, where, when), chooses legal-table IDs, cites evidence post IDs. Validated in code (place must be quoted from a post, time plausible) and cached as JSON (~0.035 Bobcoins, ~20 s per campaign). |
 | **Legal Reference & Escalation** | `.bob/rules-osint-analyst/01-legal-table.md` + Python rules | One legal table (with IDs) used by Bob chat, embedded in prompts, and parsed to validate Bob's answers; deterministic escalation matrix (MONITOR / ALERT / URGENT). |
 | **Brief Summary** | IBM Bob headless (`bob run`) | Writes the brief's executive summary from verified verdicts only; cached per dataset and cleared when a verdict or the analysis changes. |
 | **IBM Bob MCP Server** | Python MCP SDK (FastMCP), registered in `.bob/mcp.json` | Read-only tools `list_campaigns`, `get_campaign`, `get_posts`, `timeline`, `account_profile` so officers can investigate from Bob chat (IBMid sign-in). |
-| **Command Center UI** | React 19 + Vite, Tailwind CSS, Cytoscape.js (network graph), SVG timeline, lucide-react icons | Datasets (upload, status, progress), Overview (key numbers, timeline, campaign table + detail), Network (graph + detail), Brief. Design language in [`design-system.md`](design-system.md). Built to `src/web/dist/` and served by FastAPI. |
+| **Command Center UI** | React 19 + Vite, Tailwind CSS, Cytoscape.js (network graph), SVG timeline, lucide-react icons, IBM Plex fonts (bundled) | Datasets (upload, column matching, Search X, status, progress), Overview (summary sentence, planned gatherings, timeline, campaign table + detail), Network (graph + detail), Posts (search and filters over every post, `engine/explore.py`), Brief. Design language in [`design-system.md`](design-system.md). Built to `src/web/dist/` and served by FastAPI. |
 | **Analysis jobs** | Python thread per dataset, in-memory job table | `POST /analyze` returns at once; the UI polls and shows the current step of 10 and elapsed time. |
 | **Threat Brief** | Markdown/HTML + print CSS | Time-stamped brief with SHA-256 hashes, timeline, evidence table, legal suggestions, recommended actions. |
 
@@ -104,12 +108,13 @@ sequenceDiagram
 3. **Bounded AI output:** Bob's answers are schema-validated; cited post IDs must belong to the campaign and legal sections must come from our fixed table, so Bob cannot introduce evidence or sections we have not checked. `bob run` executes in an empty working folder, so it cannot read or change project files.
 4. **Evidence integrity:** Every input batch and evidence post is hashed with SHA-256 and the hashes are printed in the brief, supporting a tamper-evident record for a Section 63 Bharatiya Sakshya Adhiniyam (BSA) 2023 electronic-evidence certificate.
 5. **No profiling:** Classification is based on behaviour and content; rules instruct Bob never to infer or label people by religion, caste, or community.
-6. **Mock data:** The demo uses fictional places and groups only.
+6. **No bundled data:** The app ships empty and analyses only what an officer brings in; tests build their own small batch at run time.
 
 ---
 
 ## Scalability Notes
 
 - **Coordination computation:** The toolkit is parallelised and processes millions of posts on one machine for the simpler network types; co-similarity is the most CPU-intensive.
+- **Streaming:** The stream API rebuilds the graph from its window on every request and uses a process-local lock, so it runs in one worker. Incremental edge updates would be needed for live platform volumes.
 - **Horizontal scaling:** The stateless FastAPI service can be scaled behind a load balancer; long analyses can move to a background job queue.
 - **LLM cost control:** The CIB engine acts as a filter — only high-scoring campaigns (not individual posts) are sent to Bob, and results are cached.

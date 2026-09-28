@@ -50,6 +50,13 @@ def parse_list_field(val: str) -> list[str]:
     return [p.strip() for p in parts if p.strip()]
 
 
+def _int(value) -> int | None:
+    try:
+        return int(float(value))
+    except (TypeError, ValueError):
+        return None
+
+
 def load_io_archive(path: str | Path, limit: int | None = None) -> list[Post]:
     posts: list[Post] = []
     with open(path, mode="r", encoding="utf-8", errors="replace") as f:
@@ -86,7 +93,32 @@ def load_io_archive(path: str | Path, limit: int | None = None) -> list[Post]:
                 reply_to=str(reply_to) if reply_to else None,
                 urls=urls,
                 hashtags=hashtags,
-                account_created_at=account_created_at
+                account_created_at=account_created_at,
+                platform="x",
+                # what X showed at collection time
+                display_name=row.get("user_display_name") or None,
+                quote_of=row.get("quoted_tweet_tweetid") or None,
+                followers=_int(row.get("follower_count")),
+                metrics={k: v for k, v in (("likes", _int(row.get("like_count"))), ("reposts", _int(row.get("retweet_count"))),
+                         ("replies", _int(row.get("reply_count"))), ("quotes", _int(row.get("quote_count")))) if v is not None},
+                city=row.get("user_reported_location") or None,
+                language=row.get("tweet_language") or None,
             ))
 
+    return _repair_ids(posts)
+
+
+def _repair_ids(posts: list[Post]) -> list[Post]:
+    """Some copies of the archive store the reply, quote and retweet target IDs as floats (4.259807184022692e+17),
+    which loses the last digits. Match them back to the exact ID of a post in the file when exactly one fits, else keep
+    the rounded number written out."""
+    key = lambda v: f"{float(v):.15e}"
+    exact: dict[str, str | None] = {}
+    for p in posts:
+        k = key(p.post_id) if p.post_id.isdigit() else None
+        if k:
+            exact[k] = None if k in exact and exact[k] != p.post_id else p.post_id  # None: two posts round the same
+    fix = lambda v: v if not v or v.isdigit() else (exact.get(key(v)) or str(int(float(v))))
+    for p in posts:
+        p.reply_to, p.repost_of, p.quote_of = fix(p.reply_to), fix(p.repost_of), fix(p.quote_of)
     return posts

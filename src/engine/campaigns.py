@@ -2,6 +2,7 @@ from collections import Counter
 import networkx as nx
 from engine.schema import Campaign, Post
 from engine.scoring import score_campaign
+from engine.incident import profile_campaign
 
 
 def find_campaigns(
@@ -88,26 +89,11 @@ def find_campaigns(
             "first_seen": first_seen,
             "last_seen": last_seen,
             "median_account_age_days": median_age,
+            **profile_campaign(accounts, comm_posts, G, window),
         })
 
     # Sort descending by score, tie-break by size
     raw_campaigns.sort(key=lambda c: (c["score"], c["size"]), reverse=True)
 
     # Assign sequential IDs: c1, c2, ...
-    campaigns: list[Campaign] = []
-    for idx, c_data in enumerate(raw_campaigns, 1):
-        campaigns.append(Campaign(
-            id=f"c{idx}",
-            accounts=c_data["accounts"],
-            post_ids=c_data["post_ids"],
-            size=c_data["size"],
-            top_hashtag=c_data["top_hashtag"],
-            score=c_data["score"],
-            features=c_data["features"],
-            signals=c_data["signals"],
-            first_seen=c_data["first_seen"],
-            last_seen=c_data["last_seen"],
-            median_account_age_days=c_data["median_account_age_days"]
-        ))
-
-    return campaigns
+    return [Campaign(id=f"c{idx}", **c_data) for idx, c_data in enumerate(raw_campaigns, 1)]

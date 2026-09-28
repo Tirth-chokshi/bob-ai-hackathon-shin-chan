@@ -1,7 +1,8 @@
-post_id,account_id,username,created_at,text,urls,hashtags,reply_to,repost_of,account_created_at
-p1,1001,alert_rahul,2026-09-23T14:05:02Z,Dam gates open TONIGHT! Gather at the Collector office 7 PM! #SundarpurAlert,,#SundarpurAlert,,,2026-09-19
-p2,1002,alert_meena,2026-09-23T14:05:09Z,Dam gates open TONIGHT! Gather at the Collector office 7 PM! #SundarpurAlert,,#SundarpurAlert,,,2026-09-20
-p3,1003,voice_arun,2026-09-23T14:06:40Z,Read the leaked documents before they get taken down: http://leak.example/doc,http://leak.example/doc,,,,2026-09-12
-p4,1004,patriot_sam,2026-09-23T14:09:15Z,@asha_reports Stop spreading lies!,,,p0099,,2026-09-15
-p5,1005,local_priya,2026-09-23T14:10:00Z,Lovely weather in Sundarpur today.,,,,,2019-04-02
-p6,1002,alert_meena,2026-09-23T14:11:30Z,,,,,p1,2026-09-20
+post_id,platform,account_id,username,created_at,text,city,reply_to,repost_of,account_created_at
+p1,whatsapp,wa:910000000001,Sender One,2026-09-23T14:05:02+05:30,Forwarded message text with a link https://example.org/video,Town A,,,2019-04-11
+p2,x,x:1000000001,account_one,2026-09-23T14:05:09+05:30,Same message posted by another account https://example.org/video #ExampleTag,Town A,,,2026-09-19
+p3,x,x:1000000002,account_two,2026-09-23T14:05:31+05:30,Same message posted by another account https://example.org/video #ExampleTag,Town B,,,2026-09-20
+p4,facebook,fb:100000000001,Page or Person,2026-09-23T14:09:15+05:30,An ordinary post asking whether the message is true,Town C,,,2016-02-03
+p5,x,x:1000000003,account_three,2026-09-23T14:12:40+05:30,@someone a reply to the post p9,Town B,p9,,2026-09-15
+p6,telegram,tg:1000000004,Channel Name,2026-09-23T14:20:00+05:30,Message in Hindi or Hinglish works too: aaj shaam sab log pahuncho,Town A,,,2026-09-18
+p7,x,x:1000000001,account_one,2026-09-23T14:21:30+05:30,,Town A,,p2,2026-09-19

@@ -46,8 +46,7 @@ def load_ira(path: str | Path, limit: int | None = None) -> list[Post]:
                 if u_val and u_val != "None" and u_val not in urls:
                     urls.append(u_val)
 
-            # Extract hashtags from text
-            hashtags = re.findall(r"#\w+", text)
+            hashtags = []  # taken from the text by normalize.enrich (handles all scripts)
 
             # The dataset flags retweets but not which tweet was retweeted, so repost_of stays empty
             posts.append(Post(
@@ -59,7 +58,11 @@ def load_ira(path: str | Path, limit: int | None = None) -> list[Post]:
                 reply_to=None,
                 urls=urls,
                 hashtags=hashtags,
-                account_created_at=None
+                account_created_at=None,
+                platform="x",
+                language=row.get("language") or None,  # e.g. "Russian"; normalised to a code later
+                followers=int(row["followers"]) if (row.get("followers") or "").isdigit() else None,
+                city=row.get("region") if row.get("region") not in (None, "", "Unknown") else None,
             ))
 
     return posts

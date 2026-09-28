@@ -9,7 +9,7 @@
 | Role | Name | Email | Focus Area |
 |---|---|---|---|
 | **Lead / Forensics** | Tirth Chokshi | chokshitirth4@gmail.com | System Architecture, Coordination Engine & Pipeline |
-| **Frontend Engineering** | Milind Pawar | — | React 19 UI, Cytoscape Graph & Interactive Timeline |
+| **Frontend Engineering** | Milind Pawar | milindpawar1639@gmail.com | React 19 UI, Cytoscape Graph & Interactive Timeline |
 | **Bob Layer & MCP** | Jainik Devada | — | IBM Bob Integration, MCP Server, Legal Mapping |
 | **Data & Benchmarking** | Jigar Jariwala | — | Scenario Synthesis, Real Data Adapters, Evaluation |
 
@@ -25,64 +25,57 @@ Officers lack an automated system that detects synchronized coordination topolog
 
 ---
 
-## 💡 The Key Insight: Behaviour First, Content Second
+## 💡 What an officer sees
 
-Most conventional AI threat detectors classify posts individually. In contrast, our platform operates on a **two-phase architecture**:
+Bring in posts (any CSV, Excel or JSON export with its own column names, X API search or stream data, a WhatsApp or Telegram export, or a search run on X from the app) and one screen answers:
 
-1. **Phase 1 — Behavioral Coordination Detection (Deterministic & Structural):** Ingests posts and constructs a multi-signal coordination network using the QUT Digital Observatory method across 5 signal layers:
-   - **Co-Tweet:** Accounts posting identical text within tight time windows (60s).
-   - **Co-Similar-Tweet:** Accounts sharing paraphrased/mutated text (Jaccard similarity $\ge 0.8$).
-   - **Co-Link:** Accounts sharing identical URLs within the time window.
-   - **Co-Reply:** Accounts targeting the same victim handle within minutes.
-   - **Co-Retweet:** Accounts amplifying identical sources in parallel.
-   
-   Identifies suspicious clusters using **NetworkX Louvain community detection** and computes an explainable **CIB Risk Score (0–100)** across 6 forensic features: temporal velocity, lexical duplication, multi-signal fusion, account freshness, burstiness ratio, and entity concentration.
+- **Where and when is a crowd being called?** IBM Bob reads the posts in Hindi, Hinglish or English and extracts the planned gathering. The place must be quoted from a post and the time must be plausible, or it is dropped.
+- **How early did we catch it?** Each campaign records the earliest time the detection rule was met, shown against any planned gathering as the lead time.
+- **How did it spread?** Platform by platform (WhatsApp → X → Facebook → Telegram) and town by town, with times.
+- **Who started it, and who amplified it?** First posters, most connected accounts, and how many accounts are days old.
+- **What does the data actually say?** A Posts view searches and filters every post; any account, hashtag, town or campaign is one click away. Languages are detected in any script, and times are shown in the dataset's own clock (IST or UTC).
+- **What law applies and what to do now?** Sections from a fixed BNS 2023 / IT Act table (marked for legal verification), place- and time-specific escalation steps, and a time-stamped, print-ready brief with SHA-256 evidence hashes.
 
-2. **Phase 2 — Threat Synthesis & Legal Intelligence (IBM Bob AI):** **IBM Bob** (`bob run`) investigates each flagged campaign to determine the threat vector (Incitement, Misinformation, Harassment, or Benign Coordination), assesses target entities and physical mobilization risks, and suggests specific statutory sections from our verified Indian Cyber Forensics Legal Table.
+**Behaviour first, content second.** Individual posts often look harmless; the tell is many accounts acting together within seconds.
+
+1. **Coordination detection** (deterministic): the QUT coordination-network-toolkit builds five networks (same text, similar text, same link or video, replies to the same post, same retweet) within 60-second windows; NetworkX Louvain finds the campaigns; an explainable 0–100 score shows *why* each was flagged.
+2. **Spread profile** (deterministic): seeds, amplifiers, platform and town paths, speed, and the earliest time the detection rule was met.
+3. **IBM Bob** (`bob run`, headless): threat type, target, severity, planned gathering, legal-table IDs and the posts it relied on. Every field is checked in code.
+4. **Escalation rules and brief**: URGENT / ALERT / MONITOR from fixed rules, never from the AI alone.
 
 ---
 
 ## 📸 Interface & Workflow Screenshots
 
-| Overview | Network |
+| Overview: threat, timeline, spread | Network: who coordinated with whom |
 |---|---|
 | ![Overview](demo/screenshots/02-overview.png) | ![Network](demo/screenshots/03-network.png) |
 
-| IBM Bob assessment (benign decoy) | Threat brief |
+| IBM Bob assessment and spread detail | Threat brief |
 |---|---|
-| ![IBM Bob assessment of the benign decoy](demo/screenshots/04-bob-assessment.png) | ![Threat Brief](demo/screenshots/05-threat-brief.png) |
+| ![IBM Bob assessment](demo/screenshots/04-bob-assessment.png) | ![Threat Brief](demo/screenshots/05-threat-brief.png) |
 
-*(Full gallery with descriptions available in [`demo/screenshots/README.md`](demo/screenshots/README.md))*
+*(Full gallery in [`demo/screenshots/README.md`](demo/screenshots/README.md). These were taken on the earlier generated demo incidents, which have since been removed; retake them on your own data.)*
 
 ---
 
 ## 📊 Evaluation
 
-Every number here comes from `python src/eval/measure.py`; the full output is in [`src/eval/results.md`](src/eval/results.md).
+Every number here comes from `python src/eval/measure.py`, which analyses every file in `data/raw`; the full output is in
+[`src/eval/results.md`](src/eval/results.md). These are real datasets with no ground truth, so the table shows what was found.
 
-**Synthetic scenario:** 4,658 posts from 956 accounts. It contains three planted threat rings plus a benign decoy (cricket fans posting the same chants at three match moments).
+| Dataset | Analysed | Languages | Campaigns found | CIB scores | Signals |
+|---|---|---|---|---|---|
+| X/Twitter IO archive sample | 51,410 posts from 6,997 accounts (whole file) | Bengali, Chinese, Catalan | 3 campaigns, 38 accounts | 59–63 | retweets, replies |
+| FiveThirtyEight IRA tweets (`ira_1.csv`) | 3,313 posts from 44 accounts (busiest 6 hours) | English | 4 campaigns, 43 accounts | 35–37 | shared links |
+| FiveThirtyEight IRA tweets (`ira_2.csv`) | 640 posts from 12 accounts (busiest 6 hours) | English, German | none | — | — |
+| Russian IRA trolls, Nov–Dec 2015 | 11,053 posts from 108 accounts (whole file) | English, Russian, Ukrainian | 2 campaigns, 19 accounts | 42–43 | shared links, same and similar text |
+| CONSTRAINT-2021 | text and labels only | | not analysable: no account or time | | |
 
-| Ring | Planted | Accounts | Found | Cluster | CIB score | IBM Bob verdict | Escalation |
-|---|---|---|---|---|---|---|---|
-| **A** | Dam-flood rumour + 7 PM gathering call | 40 | 40 (100%) | `c2` | **89** | `incitement` (severity 5) | **URGENT** |
-| **B** | Fake leaked-document links | 25 | 25 (100%) | `c1` | **92** | `organized_misinformation` (4) | **URGENT** |
-| **C** | Harassment pile-on against a journalist | 30 | 30 (100%) | `c3` | **88** | `targeted_harassment` (4) | **URGENT** |
-| **D** | Decoy: cricket fans chanting | 60 | 60 (100%) | `c4` | **72** | `benign_coordination` (1) | **MONITOR** |
+The score weights were set by hand and are not calibrated on labelled real data. Research archives lack some fields (the
+IRA files have no account creation dates or retweet targets), so some signals cannot fire there.
 
-- All four groups are found as separate clusters with no extra accounts, and no other campaigns are reported.
-- The decoy *is* coordinated, so it is detected, but it scores lowest. IBM Bob labels it benign, and the rules escalate it only to MONITOR. This is the point of the design: behaviour first, content second.
-- The full analysis takes about 18 s on a laptop.
-
-**Real research datasets (no ground truth):**
-
-| Dataset | Analysed | Campaigns found | CIB scores |
-|---|---|---|---|
-| FiveThirtyEight IRA tweets | 3,313 posts from 44 accounts (busiest 6 hours) | 4 campaigns, 43 accounts (shared links) | 35–37 |
-| X/Twitter IO archive sample | 51,410 posts from 6,997 accounts (whole file) | 3 campaigns, 38 accounts (retweets, replies) | 59–62 |
-
-Real campaigns score lower than the planted rings. The weights were set by hand on the synthetic scenario, and the IRA file has no account creation dates or retweet targets.
-
-**IBM Bob cost:** about 0.026 Bobcoins and 10–20 s per classification (measured). Cached verdicts cost nothing.
+**IBM Bob cost:** about 0.03–0.04 Bobcoins and 15–25 s per classification (measured). Saved verdicts cost nothing.
 
 ---
 
@@ -143,9 +136,7 @@ cp src/.env.example src/.env
 ```bash
 python src/main.py
 ```
-Open **http://127.0.0.1:8000** in your browser. The pre-analysed demo dataset loads immediately with the coordination graph, activity timeline, explainable CIB scores and cached IBM Bob verdicts, so it works without an API key.
-
-To analyse your own posts, upload a CSV with the account, time and text of each post on the **Datasets** page; see [`docs/data-format.md`](docs/data-format.md).
+Open **http://127.0.0.1:8000** in your browser. The app starts empty: on the **Datasets** page, upload an export (CSV, Excel, JSON, X API data, WhatsApp or Telegram; any column names) or search X, and the analysis starts by itself. See [`docs/data-format.md`](docs/data-format.md).
 
 ---
 
@@ -161,8 +152,8 @@ Investigate detected campaigns conversationally in Bob Chat:
    /mode osint-analyst
    ```
 3. Ask investigative questions:
-   - *"Which accounts started the dam flooding rumour in campaign c2?"*
-   - *"List the top coordinated campaigns in dataset demo sorted by CIB risk."*
+   - *"List my datasets and the campaigns in the newest one."*
+   - *"Which accounts started campaign c1, on which platform, and does any campaign call a gathering?"*
    - *"Show the first posts of campaign c3 and tell me which account posted first."*
 
 Bob queries the read-only `threat-intel` FastMCP server (`src/mcp_server/server.py`) and cites post IDs from the analysed data.

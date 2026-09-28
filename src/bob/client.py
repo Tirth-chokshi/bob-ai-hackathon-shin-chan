@@ -5,10 +5,14 @@ import re
 import shutil
 import subprocess
 import tempfile
+from datetime import datetime, tzinfo
 from pathlib import Path
+from zoneinfo import ZoneInfo
 from config import BOB_API_KEY, BOB_MAX_COST, BOB_RULES
 from engine.schema import Campaign, Post, BobVerdict
 from engine.scoring import WEIGHTS
+from engine.normalize import parse_time
+from engine.zones import INDIA, dataset_zone, local_text
 from bob.legal import load_legal_table, allowed_offence_ids
 
 log = logging.getLogger(__name__)
@@ -115,7 +119,8 @@ def extract_json(text: str) -> dict:
 def build_classification_prompt(
     campaign: Campaign,
     sample_posts: list[Post],
-    allowed_ids: list[str]
+    allowed_ids: list[str],
+    zone: tzinfo = ZoneInfo(INDIA),
 ) -> str:
     rules_text = ""
     for r_file in sorted(BOB_RULES.glob("*.md")):
@@ -124,15 +129,15 @@ def build_classification_prompt(
     posts_repr = [
         {
             "post_id": p.post_id,
-            "account_id": p.account_id,
+            "posted_at": local_text(p.created_at, zone),
+            "platform": p.platform,
+            "town": p.city,
             "username": p.username,
-            "created_at": p.created_at,
             "text": p.text,
             "urls": p.urls,
-            "hashtags": p.hashtags,
             "repost_of": p.repost_of,
             "reply_to": p.reply_to,
-            "account_created_at": p.account_created_at,
+            "account_created": local_text(p.account_created_at, zone, "%d %b %Y"),
         }
         for p in sample_posts
     ]
@@ -153,21 +158,29 @@ def build_classification_prompt(
         "post_count": len(campaign.post_ids),
         "top_hashtag": campaign.top_hashtag,
         "coordination_signals": campaign.signals,
-        "first_seen_unix": campaign.first_seen,
-        "last_seen_unix": campaign.last_seen,
+        "first_seen": local_text(campaign.first_seen, zone),
+        "last_seen": local_text(campaign.last_seen, zone),
         "median_account_age_days": campaign.median_account_age_days,
+        "platforms_in_order_reached": [f"{x['name']} ({local_text(x['first_seen'], zone)})" for x in campaign.platform_path],
+        "towns_in_order_reached": [f"{x['name']} ({local_text(x['first_seen'], zone)})" for x in campaign.town_path],
+        "languages": campaign.languages,
     }
 
-    prompt = f"""You are a police cyber cell threat analyst evaluating a coordinated social media campaign in India.
+    zone_name = getattr(zone, "key", str(zone))
+    utc_offset = datetime.fromtimestamp(campaign.first_seen, zone).strftime("%z")
+    utc_offset = f"{utc_offset[:3]}:{utc_offset[3:]}"
+    prompt = f"""You are a police cyber cell threat analyst in India evaluating a coordinated social media campaign.
+The campaign may come from any country and be in any language: describe what it is about and whom it targets
+on its own terms, and do not comment on whether it concerns India.
 
 RULES & LEGAL CONTEXT:
 {rules_text}
 
-CAMPAIGN ANALYSIS (timestamps are Unix seconds; score components show points, maximum points, and weight):
-{json.dumps(campaign_analysis, indent=2)}
+CAMPAIGN ANALYSIS (times are local time, {zone_name}; score components show points, maximum points, and weight):
+{json.dumps(campaign_analysis, indent=2, ensure_ascii=False)}
 
-REPRESENTATIVE POSTS (all posts supplied by the analysis pipeline):
-{json.dumps(posts_repr, indent=2)}
+REPRESENTATIVE POSTS (sampled across the whole campaign; they may be in any language, e.g. Hindi or Hinglish):
+{json.dumps(posts_repr, indent=2, ensure_ascii=False)}
 
 ALLOWED LEGAL OFFENCE IDs (choose ONLY from this list):
 {', '.join(allowed_ids)}
@@ -183,8 +196,16 @@ Analyze the behaviour and text. Reply with ONLY a single valid JSON object adher
   "legal_suggestions": [
     {{"id": "<allowed_id>", "why": "<one line explanation>"}}
   ],
-  "evidence_post_ids": ["<post_ids from sample posts>"]
+  "evidence_post_ids": ["<post_ids from sample posts>"],
+  "offline_event": null or {{
+    "what": "<what people are called to do offline, in English>",
+    "where": "<the place, in English>",
+    "where_quote": "<the place copied exactly as written in one of the posts, same script>",
+    "when": "<ISO 8601 date-time with the UTC offset {utc_offset}, resolving words like 'aaj shaam 6 baje' from the post's time>"
+  }}
 }}
+Write target and narrative in English whatever the language of the posts.
+Set offline_event only if posts call people to a specific place at a specific time; otherwise null.
 Do NOT output any markdown wrappers, conversational greetings, or notes. ONLY JSON."""
     return prompt
 
@@ -194,18 +215,31 @@ def cached_verdict(run_dir: Path, campaign_id: str) -> BobVerdict | None:
     return BobVerdict.model_validate_json(path.read_text(encoding="utf-8")) if path.exists() else None
 
 
-def validate_verdict(data: dict, campaign: Campaign, legal_table: dict) -> BobVerdict:
-    """Schema-check Bob's answer, keep only offence IDs from our legal table and post IDs from this campaign."""
+def validate_verdict(data: dict, campaign: Campaign, legal_table: dict, posts: list[Post] = ()) -> BobVerdict:
+    """Schema-check Bob's answer, keep only offence IDs from our legal table and post IDs from this campaign,
+    and keep the offline event only if its place is quoted from a post and its time is plausible."""
     verdict = BobVerdict.model_validate(data)
     verdict.legal_suggestions = [
         s.model_copy(update={k: legal_table[s.id][k] for k in ("title", "law", "ipc")})
         for s in verdict.legal_suggestions
         if legal_table.get(s.id, {}).get("kind") == "offence"
     ]
-    campaign_post_ids = set(campaign.post_ids)
-    verdict.evidence_post_ids = [pid for pid in verdict.evidence_post_ids if pid in campaign_post_ids]
+    allowed = set(campaign.post_ids)
+    if posts:  # Bob can only cite the posts it was shown
+        allowed &= {p.post_id for p in posts}
+    verdict.evidence_post_ids = [pid for pid in verdict.evidence_post_ids if pid in allowed]
     if not verdict.evidence_post_ids:
-        raise ValueError("no evidence post IDs from this campaign")
+        raise ValueError("no evidence post IDs from the posts Bob was shown")
+
+    event = verdict.offline_event
+    if event:
+        squash = lambda s: " ".join(s.lower().split())
+        quoted = squash(event.where_quote) and any(squash(event.where_quote) in squash(p.text) for p in posts)
+        at = parse_time(event.when)
+        plausible = at is not None and campaign.first_seen - 86400 <= at <= campaign.last_seen + 3 * 86400
+        verdict.offline_event = event.model_copy(update={"at": at}) if quoted and plausible else None
+        if not verdict.offline_event:
+            log.info("Dropped Bob's offline event for %s (place not quoted from a post or implausible time)", campaign.id)
     return verdict
 
 
@@ -231,7 +265,7 @@ def classify(
         raise BobNotConfigured("IBM Bob Shell CLI was not found. Install Bob Shell and ensure `bob` is on the backend PATH.")
 
     legal_table = load_legal_table()
-    prompt = build_classification_prompt(campaign, sample_posts, allowed_offence_ids())
+    prompt = build_classification_prompt(campaign, sample_posts, allowed_offence_ids(), dataset_zone(run_dir))
 
     cost = 0.0
     verdict = None
@@ -241,7 +275,7 @@ def classify(
             try:
                 raw_resp, call_cost = run_bob(prompt, work_dir=tmp_dir)
                 cost += call_cost
-                verdict = validate_verdict(extract_json(raw_resp), campaign, legal_table)
+                verdict = validate_verdict(extract_json(raw_resp), campaign, legal_table, sample_posts)
                 break
             except Exception as e:
                 last_error = e

@@ -15,7 +15,8 @@ export function NetworkGraph({ graph, campaigns, selectedId, onSelect, theme }) 
   useEffect(() => {
     if (!containerRef.current) return
     const token = (name) => getComputedStyle(document.documentElement).getPropertyValue(name).trim()
-    const size = (n) => Math.min(28, 8 + Math.sqrt(n.data('degree') || 1) * 2.5)
+    // amplifiers are drawn larger; seeds (who started it) get a thick ring
+    const size = (n) => Math.min(34, 8 + Math.sqrt(n.data('degree') || 1) * 2.5 + (n.data('role') === 'amplifier' ? 8 : 0))
     const cy = cytoscape({
       container: containerRef.current,
       elements: [
@@ -49,6 +50,7 @@ export function NetworkGraph({ graph, campaigns, selectedId, onSelect, theme }) 
             'text-background-padding': 1,
           },
         },
+        { selector: 'node[role = "seed"]', style: { 'border-width': 4, 'border-color': token('--ink') } },
         { selector: 'edge', style: { width: 1, 'line-color': token('--line'), 'curve-style': 'haystack' } },
         { selector: '.dim', style: { opacity: 0.12 } },
       ],
@@ -99,6 +101,8 @@ export function NetworkGraph({ graph, campaigns, selectedId, onSelect, theme }) 
           </button>
         ))}
         <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-faint" />Not in a campaign</span>
+        <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-full bg-faint border-2 border-ink" />Started the campaign</span>
+        <span className="flex items-center gap-1.5"><span className="w-3.5 h-3.5 rounded-full bg-faint" />Larger = amplifier</span>
       </div>
     </div>
   )

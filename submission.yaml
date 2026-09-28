@@ -40,10 +40,10 @@ submission:
     for legal review, and draft a time-stamped police threat brief with escalation steps.
 
   key_features:                        # REQUIRED — List 3 to 5 specific features you implemented
-    - "Multi-signal CIB detection: co-tweet, co-similarity, co-link, co-reply and co-retweet networks with community detection and an explainable 0-100 campaign score"
+    - "Early warning of offline threats: IBM Bob extracts the planned gathering (place quoted from the posts, time checked) and the engine records when each network was first flagged, so the lead time before the gathering is shown"
+    - "Brings in real data as it is: any CSV/Excel/JSON export (columns matched by name or picked from a preview), X API search and stream data, WhatsApp and Telegram exports, languages detected in any script; then five coordination networks, community detection, an explainable 0-100 score, and how each campaign spread and who started it"
     - "IBM Bob threat classifier: labels each campaign (incitement, harassment, misinformation, benign) and cites evidence post IDs that are verified in code"
     - "Legal suggestions: BNS 2023 (196, 197, 351, 353, 356, 79) and IT Act 2000 (66D, 67, 69A) mappings, marked for legal verification"
-    - "IBM Bob MCP investigation console: officers query campaigns, posts and timelines in natural language"
     - "Police threat brief: time-stamped, print-ready brief with SHA-256 hashes of the batch and every evidence post"
 
   tech_stack:
@@ -59,11 +59,12 @@ submission:
     time-stamped escalation brief with IBM Bob.
 
   known_limitations: >                 # Optional but recommended — be honest about gaps
-    Runs on a synthetic post batch with planted campaigns plus public research datasets; no live platform ingestion.
-    Scores and classifications are decision support, and legal sections need verification by a legal officer.
-    CIB score weights are hand-set on the synthetic scenario: real campaigns score 35-62 (IRA 35-37, because that
-    archive lacks account creation dates and retweet targets). Bob's classification is shown on 4 campaigns, not benchmarked, and
-    Hindi/Hinglish quality is not yet evaluated.
+    No ground-truth evaluation on real data: the public archives we tested have no campaign labels, and text-only labelled
+    datasets (e.g. CONSTRAINT-2021) have no account or time, so they can't be analysed for coordination. X search needs
+    a paid X API plan; there is no live platform connector beyond it and the demonstration stream API. Scores and
+    classifications are decision support, and legal sections need verification by a legal officer. CIB score weights
+    are hand-set: real campaigns score 35-63 (IRA 35-43, as those archives lack account creation dates and retweet
+    targets). Bob's labels are not benchmarked.
 
 # =============================================================================
 # ARTIFACT LOCATIONS

@@ -41,18 +41,19 @@ The core idea is **behaviour first, content second**: we first find accounts tha
 
 ### Detailed Operational Steps
 
-1. **Ingestion & Normalization:** Loads a batch of posts and converts it into one common schema, so the rest of the pipeline works the same for synthetic data and research datasets.
+1. **Ingestion & Normalization:** Loads a batch of posts (CSV/JSON with any common column names, a WhatsApp chat export or a Telegram export) and converts it into one common schema with platform, town and language, so the rest of the pipeline works the same for every source.
 2. **Coordination Detection:** For every pair of accounts, counts how often they performed the same action within a short time window (60 seconds by default). A minimum edge weight of 2 filters out one-off coincidences. Output is an account-to-account graph.
 3. **Campaign Discovery:** Merges all coordination types into one weighted graph, drops weak edges, and runs community detection. Each community of 5+ accounts becomes a candidate campaign.
-4. **Explainable CIB Scoring:** Each campaign gets a 0–100 score from transparent features — median seconds between coordinated posts, share of near-duplicate posts, number of coordination types, median account age, peak posts per minute, and hashtag/URL concentration. Each feature's contribution is stored so the UI can show *why* a campaign was flagged.
-5. **IBM Bob Threat Analysis:** For each top campaign, the backend runs IBM Bob headless (`bob run --format json`, authenticated with our Bob API key, prompt sent through stdin) with the campaign statistics, ~10 representative posts, and our rule files (legal table, escalation rules, no-profiling rule). Bob returns structured JSON:
+4. **Spread profile:** For each campaign, the engine records who posted first, the most connected accounts, the order and times it reached each platform and town, how fast it spread, the share of new accounts, and the earliest time it met the detection rule. Compared with a planned gathering, that last time is the early-warning lead.
+5. **Explainable CIB Scoring:** Each campaign gets a 0–100 score from transparent features — median seconds between coordinated posts, share of near-duplicate posts, number of coordination types, median account age, peak posts per minute, and hashtag/URL concentration. Each feature's contribution is stored so the UI can show *why* a campaign was flagged.
+6. **IBM Bob Threat Analysis:** For each campaign, the backend runs IBM Bob headless (`bob run --format json`, authenticated with our Bob API key, prompt sent through stdin) with the campaign statistics and spread profile, 20 posts sampled across the campaign (Hindi, Hinglish or English, times in IST), and our rule files (legal table, escalation rules, no-profiling rule). Bob returns structured JSON, including any **planned offline gathering** (what, where, when); the place must be quoted from a post and the time must be plausible, or it is dropped in code:
      - `INCITEMENT`: calls for mobilization, violence, or arson.
      - `ORGANIZED_MISINFORMATION`: fabricated claims pushed by the network.
      - `TARGETED_HARASSMENT`: coordinated abuse of a person or group.
      - `BENIGN_COORDINATION`: fan clubs, news sharing, organic protest organizing — coordination that is not a threat.
 
    Every post ID Bob cites is checked in code against the campaign; output that fails validation twice is rejected with an error; nothing is guessed or cached. Results are cached, so each campaign is analysed once.
-6. **Legal Suggestions (for verification):** Bob may only choose from a fixed, checked table of sections, by ID; any other section is dropped in code. In testing, free-form answers included over-serious or misdescribed sections, which is why the table is fixed.
+7. **Legal Suggestions (for verification):** Bob may only choose from a fixed, checked table of sections, by ID; any other section is dropped in code. In testing, free-form answers included over-serious or misdescribed sections, which is why the table is fixed.
      - **BNS 196 (IPC 153A):** Promoting enmity between groups.
      - **BNS 197 (IPC 153B):** Imputations prejudicial to national integration.
      - **BNS 351 (IPC 506):** Criminal intimidation.
@@ -64,7 +65,7 @@ The core idea is **behaviour first, content second**: we first find accounts tha
      - **IT Act 67:** Publishing obscene material in electronic form.
 
    Procedural references used in escalation and the brief (not offences): **IT Act 69A** (blocking, Central Government power), **BNSS 163** (preventive orders), **BSA 63** (electronic-record certificate).
-7. **Escalation & Brief:** Deterministic rules set the escalation level (e.g., incitement plus a real-world call to action → URGENT). The engine renders a time-stamped brief for the SHO / District Cyber Cell with the timeline, campaign table, evidence list with SHA-256 hashes, legal suggestions, recommended actions, and limitations. Bob writes only the executive summary; every other section is filled from stored, verified data.
+8. **Escalation & Brief:** Deterministic rules set the escalation level (e.g., incitement plus a real-world call to action → URGENT); when a gathering is known, the first actions name its place and time ("Deploy police at Rajpura bus stand before 17:00"). The brief opens with the planned gathering and its lead time. The engine renders a time-stamped brief for the SHO / District Cyber Cell with the timeline, campaign table, evidence list with SHA-256 hashes, legal suggestions, recommended actions, and limitations. Bob writes only the executive summary; every other section is filled from stored, verified data.
 
 ---
 

@@ -1,12 +1,30 @@
+from datetime import tzinfo
 from typing import Any
+from zoneinfo import ZoneInfo
 from engine.schema import BobVerdict
+from engine.zones import INDIA, local_text
 
 
-def escalate(score: int, verdict: BobVerdict) -> dict[str, Any]:
+def escalate(score: int, verdict: BobVerdict, zone: tzinfo = ZoneInfo(INDIA)) -> dict[str, Any]:
     """
     Applies deterministic police cyber cell escalation rules based on
     CIB score, threat classification, and offline call-to-action flags.
+    When IBM Bob found a planned gathering, the first actions name its place and time.
     """
+    result = _level(score, verdict)
+    event = verdict.offline_event
+    if event and event.at and result["level"] != "MONITOR":
+        deploy_by = local_text(event.at - 3600, zone, "%H:%M on %d %b")
+        languages = "Hindi and English" if getattr(zone, "key", "") == INDIA else "the local languages"
+        result["actions"] = [
+            f"Deploy police at {event.where} before {deploy_by}, an hour before the planned gathering",
+            f"Issue a public advisory in {languages} now, before the gathering time",
+            *result["actions"],
+        ]
+    return result
+
+
+def _level(score: int, verdict: BobVerdict) -> dict[str, Any]:
     threat_type = verdict.threat_type
     severity = verdict.severity
     cta = verdict.offline_call_to_action

@@ -1,3 +1,4 @@
+import gc
 import json
 import logging
 import mimetypes
@@ -6,42 +7,41 @@ import shutil
 import threading
 import time
 import uuid
-from contextlib import asynccontextmanager
 from pathlib import Path
 
 # Ensure correct MIME types on Windows
 mimetypes.add_type("application/javascript", ".js")
 mimetypes.add_type("text/javascript", ".js")
 mimetypes.add_type("text/css", ".css")
-from fastapi import FastAPI, HTTPException, UploadFile, File
+from fastapi import FastAPI, HTTPException, UploadFile, File, Body
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 
-from config import WEB_DIST, RUNS, SAMPLES
-from engine.normalize import load_posts
+from config import (WEB_DIST, RUNS, STREAMS, STREAM_WINDOW_SECONDS, STREAM_RETENTION_SECONDS, MIN_EDGE_WEIGHT,
+                    TIME_WINDOW, X_BEARER_TOKEN)
+from engine.normalize import ALIASES, MissingColumns, enrich, load_posts, load_rows, preview
+from scenario.adapters.x_api import XApiError, is_x_data, search_recent, x_posts
 from engine.pipeline import analyze, STAGES
 from engine.schema import Campaign, Post
+from engine.coordination import build_graph
+from engine.campaigns import find_campaigns
+from engine.streaming import close as close_stream, ingest as ingest_stream_post, read_state as read_stream_state, save_alert
 from engine.escalation import escalate
+from engine.zones import dataset_zone, guess_timezone
+from engine.explore import dataset_stats, search_posts, thread
 from bob.client import BobNotConfigured, cached_verdict, classify, is_bob_configured
 from brief.render import render_brief
 
 log = logging.getLogger(__name__)
-DEMO_NAME = "Demo dataset (pre-analysed)"  # shown in the datasets list
 
 # ponytail: in-memory job table for this one server process; a restart forgets running jobs (re-run the analysis)
 JOBS: dict[str, dict] = {}
+UPLOAD_TYPES = (".csv", ".tsv", ".xlsx", ".json", ".jsonl", ".ndjson", ".txt")
+STREAM_DB = STREAMS / "streams.sqlite"
+STREAM_LOCK = threading.RLock()  # ponytail: one worker process only; the graph is rebuilt from the window on every post
 
 
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    # Copy the pre-analysed demo on first start
-    demo_run = RUNS / "demo"
-    if not demo_run.exists() and (SAMPLES / "demo_run").exists():
-        shutil.copytree(SAMPLES / "demo_run", demo_run)
-    yield
-
-
-app = FastAPI(title="Social Media Threat Intelligence Engine", lifespan=lifespan)
+app = FastAPI(title="Social Media Threat Intelligence Engine")
 
 
 def run_dir_for(dataset_id: str) -> Path:
@@ -59,9 +59,7 @@ def read_json(path: Path, missing: str):
 
 
 def source_file(dataset_id: str, run_dir: Path) -> Path:
-    """The posts a dataset is analysed from: the uploaded file, or the scenario CSV for the demo."""
-    if dataset_id == "demo":
-        return SAMPLES / "scenario_posts.csv"
+    """The file a dataset is analysed from: the upload, or the raw pages of an X search."""
     uploads = sorted(run_dir.glob("upload*"))
     if uploads:
         return uploads[0]
@@ -72,9 +70,14 @@ def dataset_meta(run_dir: Path) -> dict:
     """Name and counts, stored in meta.json so listing never re-reads the posts."""
     meta_path = run_dir / "meta.json"
     meta = json.loads(meta_path.read_text(encoding="utf-8")) if meta_path.exists() else {}
+    if meta.get("status") == "needs_mapping":  # uploaded, waiting for the user to say which column is which
+        return {"posts": 0, "accounts": 0, "timezone": "UTC", **meta}
     if "posts" not in meta:  # runs from older versions: count once, then remember
-        posts = load_posts(source_file(run_dir.name, run_dir))
-        meta.update(posts=len(posts), accounts=len({p.account_id for p in posts}))
+        posts = load_posts(source_file(run_dir.name, run_dir), mapping=meta.get("mapping"))
+        meta.update(posts=len(posts), accounts=len({p.account_id for p in posts}), timezone=guess_timezone(posts))
+        meta_path.write_text(json.dumps(meta), encoding="utf-8")
+    if "timezone" not in meta:  # older runs: the incident packs are in India; research archives are in UTC
+        meta["timezone"] = "UTC"
         meta_path.write_text(json.dumps(meta), encoding="utf-8")
     return meta
 
@@ -105,7 +108,8 @@ def run_job(dataset_id: str, source: Path):
 
     try:
         progress("Reading posts")
-        result = analyze(dataset_id, load_posts(source), progress=progress)
+        meta = dataset_meta(RUNS / dataset_id)
+        result = analyze(dataset_id, load_posts(source, mapping=meta.get("mapping")), progress=progress, zone=meta["timezone"])
         job.update(state="done", finished=time.time(), campaigns=len(result["campaigns"]), runtime_ms=result["runtime_ms"])
     except Exception as e:
         log.exception("Analysis of %s failed", dataset_id)
@@ -114,7 +118,97 @@ def run_job(dataset_id: str, source: Path):
 
 @app.get("/api/status")
 def status():
-    return {"bob_configured": is_bob_configured(), "version": "0.2.0"}
+    return {"bob_configured": is_bob_configured(), "x_configured": bool(X_BEARER_TOKEN), "version": "0.4.0"}
+
+
+# Rolling-window stream: posts arrive one at a time or in lists; each request re-runs detection on the last STREAM_WINDOW_SECONDS
+# of event time and returns a provisional alert. Walkthrough: demo/stream-demo.md.
+def validate_stream_id(stream_id: str) -> str:
+    if not re.fullmatch(r"[A-Za-z0-9_-]+", stream_id):
+        raise HTTPException(status_code=400, detail="Invalid stream id")
+    return stream_id
+
+
+def recompute_stream(stream_id: str, posts: list[Post], latest: int) -> dict:
+    window_start = latest - STREAM_WINDOW_SECONDS
+    active_posts = [post for post in posts if window_start <= post.created_at <= latest]
+    stream_dir = STREAMS / stream_id
+    stream_dir.mkdir(parents=True, exist_ok=True)
+    # co-actions still count only within TIME_WINDOW seconds, as in batch analysis; the stream window only limits which posts
+    graph = build_graph(active_posts, db_path=stream_dir / "coordination.sqlite", window=TIME_WINDOW, min_weight=MIN_EDGE_WEIGHT)
+    gc.collect()  # the toolkit leaves its SQLite connection to the garbage collector; Windows can't delete an open file
+    campaigns = find_campaigns(graph, active_posts, min_size=5, window=TIME_WINDOW)
+    return {
+        "stream_id": stream_id,
+        "status": "provisional",
+        "review_required": True,
+        "window_started_at": window_start,
+        "window_ended_at": latest,
+        "last_updated_at": time.time(),
+        "retained_posts": len(posts),
+        "window_posts": len(active_posts),
+        "campaigns": [
+            {"id": c.id, "accounts": c.size, "post_count": len(c.post_ids), "coordination_score": c.score,
+             "signals": c.signals, "top_hashtag": c.top_hashtag, "first_seen": c.first_seen,
+             "last_seen": c.last_seen, "detected_at": c.detected_at}
+            for c in campaigns
+        ],
+    }
+
+
+@app.post("/api/streams/{stream_id}/posts")
+def add_stream_post(stream_id: str, payload: dict | list[dict] = Body(...)):
+    """One post, or a list of posts (one graph rebuild per request, which takes a few seconds)."""
+    validate_stream_id(stream_id)
+    rows = payload if isinstance(payload, list) else [payload]
+    if not rows or not all(rows):
+        raise HTTPException(status_code=422, detail="Post payload cannot be empty")
+    try:
+        new_posts = enrich(x_posts(rows) if is_x_data(rows) else load_rows(rows, list(dict.fromkeys(k for r in rows for k in r))))
+    except (ValueError, TypeError) as e:
+        raise HTTPException(status_code=422, detail=str(e))
+    with STREAM_LOCK:
+        try:
+            duplicates = [ingest_stream_post(STREAM_DB, stream_id, p, STREAM_RETENTION_SECONDS) for p in new_posts]
+        except ValueError as e:
+            raise HTTPException(status_code=409, detail=str(e))
+        _, posts, latest = duplicates[-1]  # the last ingest returns every retained post and the watermark
+        alert = recompute_stream(stream_id, posts, latest)
+        save_alert(STREAM_DB, stream_id, alert)
+    return {"duplicate": all(d for d, _, _ in duplicates), "posts": len(new_posts), "alert": alert}
+
+
+@app.get("/api/streams/{stream_id}/alerts")
+def get_stream_alerts(stream_id: str):
+    validate_stream_id(stream_id)
+    state = read_stream_state(STREAM_DB, stream_id)
+    if not state:
+        raise HTTPException(status_code=404, detail="Stream not found")
+    return state[0]["alert"]
+
+
+@app.get("/api/streams/{stream_id}/timeline")
+def get_stream_timeline(stream_id: str):
+    validate_stream_id(stream_id)
+    state = read_stream_state(STREAM_DB, stream_id)
+    if not state:
+        raise HTTPException(status_code=404, detail="Stream not found")
+    stream, posts = state
+    buckets: dict[int, int] = {}
+    for post in posts:
+        if post.created_at >= (stream["latest_event_time"] or 0) - STREAM_WINDOW_SECONDS:
+            bucket_time = post.created_at // 60 * 60
+            buckets[bucket_time] = buckets.get(bucket_time, 0) + 1
+    return {"stream_id": stream_id, "bucket_seconds": 60,
+            "points": [{"t": t, "total": count} for t, count in sorted(buckets.items())]}
+
+
+@app.post("/api/streams/{stream_id}/close")
+def finish_stream(stream_id: str):
+    validate_stream_id(stream_id)
+    if not close_stream(STREAM_DB, stream_id) and not read_stream_state(STREAM_DB, stream_id):
+        raise HTTPException(status_code=404, detail="Stream not found")
+    return {"stream_id": stream_id, "status": "closed"}
 
 
 @app.get("/api/datasets")
@@ -130,21 +224,28 @@ def list_datasets():
             continue
         datasets.append({
             "id": d.name,
-            "name": meta.get("name") or (DEMO_NAME if d.name == "demo" else d.name),
+            "name": meta.get("name") or d.name,
+            "description": meta.get("description"),
+            "towns": meta.get("towns"),   # optional map coordinates {town: [x, y]}; otherwise the map lays towns out itself
             "posts": meta["posts"],
             "accounts": meta["accounts"],
+            "timezone": meta["timezone"],
             # results from older versions lack samples.json and must be re-run
             "analyzed": (d / "campaigns.json").exists() and (d / "samples.json").exists(),
+            "needs_mapping": meta.get("status") == "needs_mapping",
+            "source": meta.get("source"),
+            "fetched_at": meta.get("fetched_at"),
             "job": JOBS.get(d.name, {"state": "idle"}),
         })
-    return sorted(datasets, key=lambda d: d["id"] != "demo")  # demo first
+    return sorted(datasets, key=lambda d: d.get("fetched_at") or (RUNS / d["id"]).stat().st_mtime, reverse=True)  # newest first
 
 
 @app.post("/api/datasets")
 def upload_dataset(file: UploadFile = File(...)):
     suffix = Path(file.filename or "").suffix.lower()
-    if suffix not in (".csv", ".json"):
-        raise HTTPException(status_code=422, detail="Upload a .csv or .json file")
+    if suffix not in UPLOAD_TYPES:
+        raise HTTPException(status_code=422, detail=f"Upload one of: {', '.join(UPLOAD_TYPES)}")
+    name = Path((file.filename or "upload").replace("\\", "/")).name
 
     dataset_id = f"u_{uuid.uuid4().hex[:6]}"
     dataset_dir = RUNS / dataset_id
@@ -157,25 +258,81 @@ def upload_dataset(file: UploadFile = File(...)):
         posts = load_posts(upload_path)
         if not posts:
             raise ValueError("no posts found")
+    except MissingColumns:
+        (dataset_dir / "meta.json").write_text(json.dumps({"name": name, "status": "needs_mapping"}), encoding="utf-8")
+        return {"dataset_id": dataset_id, "name": name, "needs_mapping": True, **preview(upload_path)}
     except Exception as e:
         shutil.rmtree(dataset_dir, ignore_errors=True)
         raise HTTPException(status_code=422, detail=f"Could not read this file: {e}")
 
-    meta = {"name": Path(file.filename).name, "posts": len(posts), "accounts": len({p.account_id for p in posts})}
-    (dataset_dir / "meta.json").write_text(json.dumps(meta), encoding="utf-8")
+    return {"dataset_id": dataset_id, **save_meta(dataset_dir, posts, name=name)}
+
+
+def save_meta(run_dir: Path, posts: list[Post], **extra) -> dict:
+    meta_path = run_dir / "meta.json"
+    meta = json.loads(meta_path.read_text(encoding="utf-8")) if meta_path.exists() else {}
+    meta.pop("status", None)
+    meta.update(extra, posts=len(posts), accounts=len({p.account_id for p in posts}), timezone=guess_timezone(posts))
+    meta_path.write_text(json.dumps(meta, ensure_ascii=False), encoding="utf-8")
+    return meta
+
+
+@app.get("/api/datasets/{dataset_id}/columns")
+def get_columns(dataset_id: str):
+    """The file's columns, first rows and the suggested (or saved) column for each field."""
+    run_dir = run_dir_for(dataset_id)
+    meta = dataset_meta(run_dir)
+    return {"dataset_id": dataset_id, "name": meta.get("name"), **preview(source_file(dataset_id, run_dir), meta.get("mapping"))}
+
+
+@app.post("/api/datasets/{dataset_id}/mapping")
+def set_mapping(dataset_id: str, body: dict = Body(...)):
+    """Read the file with the columns the user chose ({"mapping": {"account_id": "Poster", ...}})."""
+    run_dir = run_dir_for(dataset_id)
+    mapping = {k: v for k, v in (body.get("mapping") or {}).items() if k in ALIASES and isinstance(v, str) and v}
+    try:
+        posts = load_posts(source_file(dataset_id, run_dir), mapping=mapping)
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+    return {"dataset_id": dataset_id, **save_meta(run_dir, posts, mapping=mapping)}
+
+
+@app.post("/api/connectors/x/search")
+def x_search(body: dict = Body(...)):
+    """Pull recent posts matching an X search query (e.g. '#RajpuraBachao OR "bachcha chor"') into a new dataset."""
+    query = str(body.get("query") or "").strip()
+    if not query:
+        raise HTTPException(status_code=422, detail="Enter a search query")
+    if not X_BEARER_TOKEN:
+        raise HTTPException(status_code=503, detail="Add X_BEARER_TOKEN to src/.env to search X")
+    try:
+        pages = search_recent(query, X_BEARER_TOKEN, max_posts=min(int(body.get("max_posts") or 500), 5000))
+    except XApiError as e:
+        raise HTTPException(status_code=502, detail=str(e))
+    posts = enrich(x_posts(pages))
+    if not posts:
+        raise HTTPException(status_code=404, detail="X returned no posts for this query in the last 7 days")
+    dataset_id = f"x_{uuid.uuid4().hex[:6]}"
+    run_dir = RUNS / dataset_id
+    run_dir.mkdir(parents=True)
+    # the raw API pages are kept as the source file (one page per line), so the dataset re-reads like any upload
+    (run_dir / "upload.jsonl").write_text("\n".join(json.dumps(pg, ensure_ascii=False) for pg in pages), encoding="utf-8")
+    meta = save_meta(run_dir, posts, name=f"X search: {query}", source="x_api", query=query,
+                     fetched_at=int(time.time()))
     return {"dataset_id": dataset_id, **meta}
 
 
 @app.delete("/api/datasets/{dataset_id}")
 def delete_dataset(dataset_id: str):
     run_dir = run_dir_for(dataset_id)
-    if dataset_id == "demo":
-        raise HTTPException(status_code=400, detail="The demo dataset can't be deleted")
     if JOBS.get(dataset_id, {}).get("state") == "running":
         raise HTTPException(status_code=409, detail="Wait for the analysis to finish")
     if not run_dir.exists():
         raise HTTPException(status_code=404, detail=f"Dataset {dataset_id} not found")
-    shutil.rmtree(run_dir)
+    try:
+        shutil.rmtree(run_dir)
+    except OSError as e:
+        raise HTTPException(status_code=409, detail=f"Some files are still in use; try again in a moment ({e.strerror})")
     JOBS.pop(dataset_id, None)
     return {"deleted": dataset_id}
 
@@ -200,11 +357,13 @@ def job_status(dataset_id: str):
 def get_campaigns(dataset_id: str):
     run_dir = run_dir_for(dataset_id)
     campaigns = read_json(run_dir / "campaigns.json", "Campaigns not found. Run analysis first.")
+    zone = dataset_zone(run_dir)
     result = []
     for c in campaigns:
         v = cached_verdict(run_dir, c["id"])
         assessment = {"threat_type": v.threat_type, "severity": v.severity,
-                      "level": escalate(c["score"], v)["level"]} if v else None
+                      "level": escalate(c["score"], v, zone)["level"],
+                      "offline_event": v.offline_event.model_dump() if v.offline_event else None} if v else None
         result.append({**campaign_summary(c), "assessment": assessment})
     return result
 
@@ -217,6 +376,40 @@ def get_graph(dataset_id: str):
 @app.get("/api/datasets/{dataset_id}/timeline")
 def get_timeline(dataset_id: str):
     return read_json(run_dir_for(dataset_id) / "timeline.json", "Timeline not found. Run analysis first.")
+
+
+@app.get("/api/datasets/{dataset_id}/stats")
+def get_stats(dataset_id: str):
+    try:
+        return dataset_stats(run_dir_for(dataset_id))
+    except FileNotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+
+
+@app.get("/api/datasets/{dataset_id}/posts")
+def get_posts(dataset_id: str, q: str = "", campaign: str = "", account: str = "", hashtag: str = "",
+              platform: str = "", language: str = "", city: str = "", reply_to: str = "", repost_of: str = "",
+              quote_of: str = "", kind: str = "", sort: str = "latest", offset: int = 0, limit: int = 50):
+    """Search and filter every post of an analysed dataset (the Posts view). sort: latest, oldest or top;
+    kind: original, replies, reposts, quotes or media."""
+    try:
+        return search_posts(run_dir_for(dataset_id), q=q, offset=max(0, offset), limit=min(max(1, limit), 200),
+                            sort=sort, kind=kind, campaign=campaign, account=account, hashtag=hashtag,
+                            platform=platform, language=language, city=city, reply_to=reply_to,
+                            repost_of=repost_of, quote_of=quote_of)
+    except FileNotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+
+
+@app.get("/api/datasets/{dataset_id}/posts/{post_id}/thread")
+def get_thread(dataset_id: str, post_id: str):
+    """A post with the posts it replies to, its replies, who reposted it and who quoted it."""
+    try:
+        return thread(run_dir_for(dataset_id), post_id)
+    except FileNotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except KeyError:
+        raise HTTPException(status_code=404, detail=f"Post {post_id} is not in this dataset")
 
 
 @app.get("/api/datasets/{dataset_id}/campaigns/{cid}")
@@ -234,7 +427,8 @@ def get_verdict(dataset_id: str, cid: str):
     verdict = cached_verdict(run_dir, cid)
     if not verdict:
         raise HTTPException(status_code=404, detail="Not classified yet")
-    return {"verdict": verdict.model_dump(), "escalation": escalate(campaign.score, verdict), "cached": True, "cost": 0.0}
+    return {"verdict": verdict.model_dump(), "escalation": escalate(campaign.score, verdict, dataset_zone(run_dir)),
+            "cached": True, "cost": 0.0}
 
 
 @app.post("/api/datasets/{dataset_id}/campaigns/{cid}/classify")
@@ -252,7 +446,7 @@ def classify_campaign(dataset_id: str, cid: str):
 
     return {
         "verdict": verdict.model_dump(),
-        "escalation": escalate(campaign.score, verdict),
+        "escalation": escalate(campaign.score, verdict, dataset_zone(run_dir)),
         "cached": is_cached,
         "cost": cost,
     }

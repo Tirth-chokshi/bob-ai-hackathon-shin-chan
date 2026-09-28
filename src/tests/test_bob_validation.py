@@ -36,6 +36,12 @@ def test_whitelists_legal_ids_and_evidence():
     assert escalate(CAMPAIGN.score, verdict)["level"] == "URGENT"
 
 
+def test_evidence_limited_to_posts_bob_was_shown():
+    shown = [Post(post_id="p2", account_id="a1", username="a1", created_at=0, text="x")]
+    verdict = validate_verdict(bob_answer(evidence_post_ids=["p1", "p2"]), CAMPAIGN, load_legal_table(), shown)
+    assert verdict.evidence_post_ids == ["p2"]  # p1 is in the campaign but Bob never saw it
+
+
 @pytest.mark.parametrize("bad", [
     {"threat_type": "terrorism"},          # not one of our labels
     {"severity": 7},                       # outside 1-5
@@ -92,3 +98,22 @@ def test_classify_does_not_fall_back_when_bob_fails(tmp_path, monkeypatch):
 
     assert calls == 2
     assert not (tmp_path / "bob" / "c1.json").exists()
+
+
+def test_offline_event_kept_only_when_quoted_and_plausible():
+    t0 = 1600750800  # Tue 22 Sep 2020 10:30 IST
+    campaign = CAMPAIGN.model_copy(update={"first_seen": t0, "last_seen": t0 + 3600})
+    posts = [Post(post_id="p1", account_id="a1", username="u", created_at=t0,
+                  text="Aaj shaam 6 baje Rajpura bus stand pe sab log pahuncho")]
+    event = {"what": "Crowd called", "where": "Rajpura bus stand", "where_quote": "Rajpura  BUS stand",
+             "when": "2020-09-22T18:00:00+05:30"}
+
+    kept = validate_verdict(bob_answer(offline_event=event), campaign, load_legal_table(), posts)
+    assert kept.offline_event.at == 1600777800
+    actions = escalate(campaign.score, kept)["actions"]
+    assert actions[0].startswith("Deploy police at Rajpura bus stand before 17:00 on 22 Sep")
+
+    invented_place = {**event, "where_quote": "Collector office"}
+    assert validate_verdict(bob_answer(offline_event=invented_place), campaign, load_legal_table(), posts).offline_event is None
+    next_month = {**event, "when": "2020-10-22T18:00:00+05:30"}
+    assert validate_verdict(bob_answer(offline_event=next_month), campaign, load_legal_table(), posts).offline_event is None

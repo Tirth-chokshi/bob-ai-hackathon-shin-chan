@@ -1,22 +1,24 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { Moon, ShieldCheck, Sun } from "lucide-react";
 import { api } from "./api";
-import { Banner, Button, PageHeader, Spinner } from "./ui";
-import { fmt } from "./labels";
+import { Banner, Button, ErrorBoundary, PageHeader, Spinner, StateCard } from "./ui";
+import { fmt, setDisplayZone, zoneLabel } from "./labels";
 import { AnalysisState, needsAnalysis } from "./components/AnalysisState";
 import { CampaignPanel } from "./components/CampaignPanel";
 import { DatasetsView } from "./views/DatasetsView";
 import { OverviewView } from "./views/OverviewView";
 import { NetworkView } from "./views/NetworkView";
+import { PostsView } from "./views/PostsView";
 import { BriefView } from "./views/BriefView";
 
 const VIEWS = [
   { id: "datasets", label: "Datasets" },
   { id: "overview", label: "Overview" },
   { id: "network", label: "Network" },
+  { id: "posts", label: "Posts" },
   { id: "brief", label: "Brief" },
 ];
-const EMPTY = { campaigns: null, graph: null, timeline: null };
+const EMPTY = { campaigns: null, graph: null, timeline: null, stats: null };
 
 function getInitialTheme() {
   try {
@@ -36,8 +38,8 @@ function readHash() {
     .replace(/^#\/?/, "")
     .split("/");
   return {
-    view: VIEWS.some((v) => v.id === view) ? view : "overview", // open on results; judges see value at once
-    datasetId: datasetId || "demo",
+    view: VIEWS.some((v) => v.id === view) ? view : "overview",
+    datasetId: datasetId || null,
     campaignId: campaignId || null,
   };
 }
@@ -48,9 +50,11 @@ export default function App() {
   const [datasetId, setDatasetId] = useState(() => readHash().datasetId);
   const [datasets, setDatasets] = useState(null); // null while loading
   const [bobConfigured, setBobConfigured] = useState(false);
+  const [xConfigured, setXConfigured] = useState(false);
   const [data, setData] = useState(EMPTY);
   const [selectedId, setSelectedId] = useState(null);
   const [error, setError] = useState(null);
+  const [postFilter, setPostFilter] = useState({}); // Posts view: search words and filters
   const wantedCampaign = useRef(readHash().campaignId); // from the URL, applied once results load
 
   useEffect(() => {
@@ -95,15 +99,20 @@ export default function App() {
   useEffect(() => {
     api
       .status()
-      .then((s) => setBobConfigured(s.bob_configured))
+      .then((s) => {
+        setBobConfigured(s.bob_configured);
+        setXConfigured(s.x_configured);
+      })
       .catch(() => {});
     refreshDatasets().then((ds) => {
       if (ds && !ds.some((d) => d.id === datasetId))
         setDatasetId(ds[0]?.id ?? null);
+      if (ds && ds.length === 0) setView("datasets"); // first run: nothing to show until data comes in
     });
   }, []);
 
   const dataset = datasets?.find((d) => d.id === datasetId);
+  setDisplayZone(dataset?.timezone); // every time shown is in the dataset's own clock
   const anyRunning = datasets?.some((d) => d.job?.state === "running");
 
   // Poll while any analysis runs, so progress and the finished state show up by themselves
@@ -118,6 +127,7 @@ export default function App() {
     dataset && !needsAnalysis(dataset)
       ? `${dataset.id}:${dataset.job?.finished ?? ""}`
       : null;
+  useEffect(() => setPostFilter({}), [datasetId]);
   useEffect(() => {
     setData(EMPTY);
     setSelectedId(null);
@@ -127,13 +137,16 @@ export default function App() {
       api.campaigns(dataset.id),
       api.graph(dataset.id),
       api.timeline(dataset.id),
+      api.stats(dataset.id).catch(() => null),
     ])
-      .then(([campaigns, graph, timeline]) => {
+      .then(([campaigns, graph, timeline, stats]) => {
         if (cancelled) return;
-        setData({ campaigns, graph, timeline });
+        setData({ campaigns, graph, timeline, stats });
         const wanted = campaigns.find((c) => c.id === wantedCampaign.current);
         wantedCampaign.current = null;
-        setSelectedId(wanted?.id ?? campaigns[0]?.id ?? null);
+        // start on the highest-priority campaign: urgent first, then the top-scored (c1)
+        const urgent = campaigns.find((c) => c.assessment?.level === 'URGENT');
+        setSelectedId(wanted?.id ?? urgent?.id ?? campaigns[0]?.id ?? null);
       })
       .catch(
         (e) =>
@@ -146,6 +159,12 @@ export default function App() {
       cancelled = true;
     };
   }, [resultsKey]);
+
+  // Any account, hashtag, town or campaign link opens the Posts view filtered to it
+  const openPosts = (filter) => {
+    setPostFilter(filter);
+    setView("posts");
+  };
 
   const openDataset = (id, nextView = "overview") => {
     setDatasetId(id);
@@ -162,11 +181,30 @@ export default function App() {
     }
   };
 
+  // A new dataset (upload, column choice, X search) is analysed at once and opened
+  const analyseAndOpen = async (id) => {
+    await api.analyze(id);
+    await refreshDatasets();
+    openDataset(id);
+  };
+
   const upload = async (file) => {
     const res = await api.upload(file); // errors are shown in the upload card
-    await api.analyze(res.dataset_id);
-    await refreshDatasets();
-    openDataset(res.dataset_id);
+    if (res.needs_mapping) {
+      await refreshDatasets();
+      return res; // the Datasets page asks which column is which
+    }
+    await analyseAndOpen(res.dataset_id);
+  };
+
+  const confirmMapping = async (id, mapping) => {
+    await api.mapping(id, mapping);
+    await analyseAndOpen(id);
+  };
+
+  const xSearch = async (query, max) => {
+    const res = await api.xSearch(query, max);
+    await analyseAndOpen(res.dataset_id);
   };
 
   const remove = async (d) => {
@@ -201,17 +239,27 @@ export default function App() {
       campaignId={selectedId}
       bobConfigured={bobConfigured}
       onAssessed={onAssessed}
+      onFilter={openPosts}
     />
   );
 
   const renderDatasetPage = () => {
-    if (!dataset) return null;
+    if (!dataset)
+      return datasets?.length ? (
+        <StateCard title="Dataset not found"
+          action={<Button variant="primary" onClick={() => { refreshDatasets(); setView("datasets"); }}>Go to Datasets</Button>}>
+          This link points to a dataset that isn't on this server (it may have been deleted).
+        </StateCard>
+      ) : null;
     const title = {
       overview: dataset.name,
       network: "Network",
+      posts: "Posts",
       brief: "Threat brief",
     }[view];
-    const subtitle = `${fmt(dataset.posts)} posts · ${fmt(dataset.accounts)} accounts${data.campaigns ? ` · ${data.campaigns.length} campaigns` : ""}`;
+    const subtitle = view === "overview" && dataset.description
+      ? `${dataset.description} Times in ${zoneLabel()}.`
+      : `${fmt(dataset.posts)} posts · ${fmt(dataset.accounts)} accounts${data.campaigns ? ` · ${data.campaigns.length} campaigns` : ""} · times in ${zoneLabel()}`;
     const rerun = dataset.analyzed &&
       !needsAnalysis(dataset) &&
       view === "overview" && (
@@ -219,7 +267,15 @@ export default function App() {
       );
 
     let body;
-    if (needsAnalysis(dataset))
+    if (dataset.needs_mapping)
+      body = (
+        <StateCard title="Choose the columns first"
+          action={<Button variant="primary" onClick={() => setView("datasets")}>Go to Datasets</Button>}>
+          This file's columns could not all be matched by name. On the Datasets page, press Choose columns and pick
+          which column is the account, the time and the text.
+        </StateCard>
+      );
+    else if (needsAnalysis(dataset))
       body = <AnalysisState dataset={dataset} onAnalyze={analyse} />;
     else if (!data.campaigns)
       body = (
@@ -231,6 +287,7 @@ export default function App() {
     else if (view === "overview")
       body = (
         <OverviewView
+          dataset={dataset}
           data={data}
           selectedId={selectedId}
           onSelect={setSelectedId}
@@ -247,6 +304,8 @@ export default function App() {
           theme={theme}
         />
       );
+    else if (view === "posts")
+      body = <PostsView datasetId={dataset.id} filter={postFilter} onFilter={setPostFilter} campaigns={data.campaigns} />;
     else
       body = (
         <BriefView
@@ -257,7 +316,7 @@ export default function App() {
 
     return (
       <>
-        <PageHeader title={title} subtitle={subtitle} action={rerun} />
+        {view !== "posts" && <PageHeader title={title} subtitle={subtitle} action={rerun} />}
         {body}
       </>
     );
@@ -366,9 +425,20 @@ export default function App() {
             }}
             onDelete={remove}
             onUpload={upload}
+            onMapping={confirmMapping}
+            onXSearch={xSearch}
+            xConfigured={xConfigured}
           />
         )}
-        {datasets && view !== "datasets" && renderDatasetPage()}
+        {datasets?.length === 0 && view !== "datasets" && (
+          <StateCard title="No datasets yet"
+            action={<Button variant="primary" onClick={() => setView("datasets")}>Add a dataset</Button>}>
+            Upload an export (CSV, Excel, JSON, X API data, WhatsApp or Telegram) or search X, and the analysis starts by itself.
+          </StateCard>
+        )}
+        <ErrorBoundary resetKey={`${view}:${datasetId}`}>
+          {datasets && view !== "datasets" && renderDatasetPage()}
+        </ErrorBoundary>
       </main>
 
       <footer className="border-t border-line py-3 text-center text-xs text-faint">
