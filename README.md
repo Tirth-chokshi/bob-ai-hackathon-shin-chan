@@ -14,12 +14,12 @@
 | **Members** | Tirth Chokshi, Milind Pawar, Jainik Devada, Jigar Jariwala |
 
 ### Team Roles & Focus Areas
-| Member | Role | Focus Area |
-|---|---|---|
-| **Tirth Chokshi** | Team Lead & Forensics Architect | System Architecture, Coordination Engine & Pipeline |
-| **Milind Pawar** | Frontend Engineering Lead | React 19 UI, Cytoscape Graph & Interactive Timeline |
-| **Jainik Devada** | Bob Layer & MCP Engineer | IBM Bob Integration, MCP Server, Legal Mapping |
-| **Jigar Jariwala** | Data & Evaluation Engineer | Scenario Synthesis, Real Data Adapters, Evaluation |
+| Member | Role | Email | Focus Area |
+|---|---|---|---|
+| **Tirth Chokshi** | Team Lead & Forensics Architect | chokshitirth4@gmail.com | System Architecture, Coordination Engine & Pipeline |
+| **Milind Pawar** | Frontend Engineering Lead | milindpawar1639@gmail.com | React 19 UI, Cytoscape Graph & Interactive Timeline |
+| **Jainik Devada** | Bob Layer & MCP Engineer | jainikmali123@gmail.com | IBM Bob Integration, MCP Server, Legal Mapping |
+| **Jigar Jariwala** | Data & Evaluation Engineer | jigarjari09@gmail.com | Scenario Synthesis, Real Data Adapters, Evaluation |
 
 ---
 

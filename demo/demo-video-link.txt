@@ -1,17 +1,1 @@
-https://youtu.be/bob-ai-shin-chan-demo
-
-# Demo Video Link
-# Replace the URL above with your final recorded 3–5 minute walkthrough video before the submission deadline.
-# Accepted platforms:
-#   - YouTube (public or unlisted)
-#   - Loom (https://www.loom.com/share/...)
-#   - IBM Box (https://ibm.box.com/s/...)
-#   - Google Drive (set to "Anyone with the link can view")
-
-Video Walkthrough Contents:
-1. Application startup and health verification
-2. OSINT stream ingestion and real-time CIB detection demonstration
-3. IBM Bob threat classification and BNS 2023 legal mapping
-4. Interactive CIB bot cluster visualization and network graph
-5. Automated generation and export of the official Police Threat Escalation Brief
-6. IBM Bob MCP tool execution demonstration
+https://drive.google.com/file/d/1nQEt_mjv-Rzgkv1rZr0HJ4Xyrkbw9xkw/view?usp=sharing
