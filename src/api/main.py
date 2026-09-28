@@ -1,4 +1,5 @@
 import gc
+import hashlib
 import json
 import logging
 import mimetypes
@@ -91,8 +92,33 @@ def load_campaign(run_dir: Path, cid: str) -> Campaign:
 
 
 def load_samples(run_dir: Path, cid: str) -> list[dict]:
-    samples = read_json(run_dir / "samples.json", "This dataset was analysed by an older version. Run the analysis again.")
-    return samples.get(cid, [])
+    samples_path = run_dir / "samples.json"
+    if samples_path.exists():
+        samples = read_json(samples_path, "Error reading samples")
+        raw = samples.get(cid, [])
+    else:
+        # Fallback if samples.json does not exist
+        posts_path = run_dir / "posts.json"
+        camp_path = run_dir / "campaigns.json"
+        if not posts_path.exists() or not camp_path.exists():
+            return []
+        camps = read_json(camp_path, "Error reading campaigns")
+        c = next((c for c in camps if c.get("id") == cid), None)
+        if not c:
+            return []
+        acc_set = set(c.get("accounts", []))
+        all_posts = read_json(posts_path, "Error reading posts")
+        raw = [p for p in all_posts if p.get("account_id") in acc_set][:20]
+
+    result = []
+    for p in raw:
+        p_dict = dict(p)
+        p_bytes = json.dumps({k: v for k, v in p_dict.items() if k not in ("sha256", "sha256_hash")}, sort_keys=True).encode("utf-8")
+        h = hashlib.sha256(p_bytes).hexdigest()
+        p_dict["sha256"] = h
+        p_dict["sha256_hash"] = h
+        result.append(p_dict)
+    return result
 
 
 def campaign_summary(c: dict) -> dict:
@@ -453,10 +479,11 @@ def classify_campaign(dataset_id: str, cid: str):
 
 
 @app.get("/api/datasets/{dataset_id}/brief", response_class=HTMLResponse)
-def get_brief(dataset_id: str):
+def get_brief(dataset_id: str, campaign_id: str | None = None, campaign: str | None = None):
+    cid = campaign_id or campaign
     run_dir_for(dataset_id)
     try:
-        return HTMLResponse(content=render_brief(dataset_id))
+        return HTMLResponse(content=render_brief(dataset_id, campaign_id=cid))
     except FileNotFoundError as e:
         raise HTTPException(status_code=404, detail=str(e))
     except Exception as e:

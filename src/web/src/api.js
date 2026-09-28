@@ -39,5 +39,8 @@ export const api = {
   campaign: (id, cid) => req('GET', `/datasets/${id}/campaigns/${cid}`),
   verdict: (id, cid) => req('GET', `/datasets/${id}/campaigns/${cid}/verdict`),
   classify: (id, cid) => req('POST', `/datasets/${id}/campaigns/${cid}/classify`),
-  briefUrl: (id) => `/api/datasets/${id}/brief`,
+  briefUrl: (id, campaignId = null) =>
+    campaignId
+      ? `/api/datasets/${id}/brief?campaign_id=${encodeURIComponent(campaignId)}`
+      : `/api/datasets/${id}/brief`,
 }
