@@ -295,13 +295,22 @@ export default function App() {
       body = (
         <BriefView
           key={`${dataset.id}-${assessedCount}`}
+          dataset={dataset}
+          campaigns={data.campaigns}
+          timeline={data.timeline}
+          stats={data.stats}
+          bobConfigured={bobConfigured}
+          onAssessed={onAssessed}
+          onFilter={openPosts}
+          selectedCampaignId={selectedId}
+          onSelectCampaign={setSelectedId}
           url={`${api.briefUrl(dataset.id)}?v=${assessedCount}`}
         />
       );
 
     return (
       <>
-        {view !== "posts" && <PageHeader title={title} subtitle={subtitle} action={rerun} />}
+        {view !== "posts" && view !== "brief" && <PageHeader title={title} subtitle={subtitle} action={rerun} />}
         {body}
       </>
     );
