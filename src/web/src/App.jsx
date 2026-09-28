@@ -297,11 +297,13 @@ export default function App() {
     else if (view === "network")
       body = (
         <NetworkView
+          datasetId={dataset?.id}
           data={data}
           selectedId={selectedId}
           onSelect={setSelectedId}
           panel={panel}
           theme={theme}
+          onOpenPosts={openPosts}
         />
       );
     else if (view === "posts")
