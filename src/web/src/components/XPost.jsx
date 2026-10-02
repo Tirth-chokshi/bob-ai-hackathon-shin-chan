@@ -86,8 +86,10 @@ export function unwrap(p) {
   if (p.original) return { shown: p.original, reposter: p }
   const m = /^RT @(\w+):\s?/.exec(p.text || '')
   return {
-    shown: { ...p, account_id: m ? m[1] : p.account_id, username: m ? m[1] : p.username, display_name: null, verified: null,
-      followers: null, text: m ? p.text.slice(m[0].length) : p.text, repost_of: null, _outside: true },
+    shown: {
+      ...p, account_id: m ? m[1] : p.account_id, username: m ? m[1] : p.username, display_name: null, verified: null,
+      followers: null, text: m ? p.text.slice(m[0].length) : p.text, repost_of: null, _outside: true
+    },
     reposter: p,
   }
 }
