@@ -1,0 +1,12 @@
+.git
+.venv
+BOB
+data
+secrets
+**/__pycache__
+**/node_modules
+**/.env
+**/.env.*
+**/*.key
+**/*.pem
+**/*.p12

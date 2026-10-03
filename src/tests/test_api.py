@@ -7,6 +7,31 @@ from tests.fixtures import X_PAGE, iso, planted_response, write_json, x_post
 from engine.schema import Campaign
 
 
+def test_production_requires_basic_auth(monkeypatch):
+    monkeypatch.setattr(main, "APP_ENV", "production")
+    monkeypatch.setattr(main, "APP_AUTH_USERNAME", "demo-user")
+    monkeypatch.setattr(main, "APP_AUTH_PASSWORD", "test-password")
+
+    with TestClient(main.app) as client:
+        assert client.get("/_health").json() == {"status": "ok"}
+        assert client.get("/").status_code == 401
+        assert client.get("/api/status").status_code == 401
+        assert client.get("/api/status", headers={"Authorization": "Basic !!!"}).status_code == 401
+        assert client.get("/api/status", auth=("demo-user", "wrong-password")).status_code == 401
+        response = client.get("/api/status", auth=("demo-user", "test-password"))
+        assert response.status_code == 200
+
+
+def test_production_fails_closed_without_auth_config(monkeypatch):
+    monkeypatch.setattr(main, "APP_ENV", "production")
+    monkeypatch.setattr(main, "APP_AUTH_USERNAME", "")
+    monkeypatch.setattr(main, "APP_AUTH_PASSWORD", "")
+
+    with TestClient(main.app) as client:
+        assert client.get("/_health").status_code == 200
+        assert client.get("/api/status").status_code == 503
+
+
 def test_upload_analyse_delete(tmp_path, monkeypatch):
     # keep the real data/runs untouched
     monkeypatch.setattr(main, "RUNS", tmp_path)

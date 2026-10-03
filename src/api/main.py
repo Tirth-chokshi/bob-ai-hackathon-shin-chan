@@ -1,5 +1,7 @@
 import gc
+import base64
 import hashlib
+import hmac
 import json
 import logging
 import mimetypes
@@ -15,11 +17,11 @@ mimetypes.add_type("application/javascript", ".js")
 mimetypes.add_type("text/javascript", ".js")
 mimetypes.add_type("text/css", ".css")
 from fastapi import FastAPI, HTTPException, UploadFile, File, Body
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
-from config import (WEB_DIST, RUNS, STREAMS, STREAM_WINDOW_SECONDS, STREAM_RETENTION_SECONDS, MIN_EDGE_WEIGHT,
-                    TIME_WINDOW, X_BEARER_TOKEN)
+from config import (APP_AUTH_PASSWORD, APP_AUTH_USERNAME, APP_ENV, WEB_DIST, RUNS, STREAMS,
+                    STREAM_WINDOW_SECONDS, STREAM_RETENTION_SECONDS, MIN_EDGE_WEIGHT, TIME_WINDOW, X_BEARER_TOKEN)
 from engine.xstore import NotXApiData, ingest, open_db, posts_from_responses, read_posts
 from connectors.x_search import XApiError, search_recent
 from engine.pipeline import analyze, STAGES
@@ -43,6 +45,41 @@ STREAM_LOCK = threading.RLock()  # ponytail: one worker process only; the graph 
 
 
 app = FastAPI(title="Social Media Threat Intelligence Engine")
+
+
+@app.middleware("http")
+async def require_deployment_auth(request, call_next):
+    if request.url.path == "/_health":
+        return await call_next(request)
+    if APP_ENV != "production" and not (APP_AUTH_USERNAME and APP_AUTH_PASSWORD):
+        return await call_next(request)
+    if not APP_AUTH_USERNAME or not APP_AUTH_PASSWORD:
+        return JSONResponse(status_code=503, content={"detail": "Deployment authentication is not configured."})
+
+    authorization = request.headers.get("authorization", "")
+    try:
+        scheme, encoded = authorization.split(" ", 1)
+        username, password = base64.b64decode(encoded, validate=True).decode("utf-8").split(":", 1)
+    except (ValueError, UnicodeDecodeError):
+        username = password = ""
+        scheme = ""
+    valid = (
+        scheme.lower() == "basic"
+        and hmac.compare_digest(username.encode("utf-8"), APP_AUTH_USERNAME.encode("utf-8"))
+        and hmac.compare_digest(password.encode("utf-8"), APP_AUTH_PASSWORD.encode("utf-8"))
+    )
+    if not valid:
+        return JSONResponse(
+            status_code=401,
+            content={"detail": "Authentication required."},
+            headers={"WWW-Authenticate": 'Basic realm="Threat Intelligence Demo", charset="UTF-8"'},
+        )
+    return await call_next(request)
+
+
+@app.get("/_health")
+def health():
+    return {"status": "ok"}
 
 
 def run_dir_for(dataset_id: str) -> Path:

@@ -45,6 +45,7 @@ On Windows (PowerShell): `Copy-Item src/.env.example src/.env`
 | `APP_PORT` | Application server port | Optional (Default: 8000) |
 | `APP_HOST` | Bind address | Optional (Default: 127.0.0.1) |
 | `APP_ENV` | Application environment (`development` / `production`) | Optional |
+| `APP_AUTH_USERNAME` / `APP_AUTH_PASSWORD` | HTTP Basic Auth credentials required in production mode | Required in production |
 | `TIMEZONE` | Timezone for brief timestamps | Optional (Default: Asia/Kolkata) |
 | `TIME_WINDOW_SECONDS` | Coordination time window | Optional (Default: 60) |
 | `MIN_EDGE_WEIGHT` | Minimum times two accounts must coordinate | Optional (Default: 2) |
@@ -148,7 +149,9 @@ Open **http://localhost:5173** — changes reload instantly and `/api` calls are
 
 Posts can also be sent one at a time to the rolling-window stream API (`/api/streams/{id}/posts`), which returns a provisional coordination alert after each post; see [`../demo/stream-demo.md`](../demo/stream-demo.md). It rebuilds the graph from the window on every post, so it suits a local demonstration, not production volumes.
 
-The server binds to `127.0.0.1` by default. The prototype has no login; do not expose it on a public or shared network.
+The local development default binds to `127.0.0.1` and has no login. Do not expose it on a public or shared network. Production mode requires the authentication variables below and fails closed without them.
+
+For a protected Render demo deployment, follow [`deployment.md`](deployment.md). Production mode requires `APP_AUTH_USERNAME` and `APP_AUTH_PASSWORD` and fails closed if either is missing.
 
 ---
 

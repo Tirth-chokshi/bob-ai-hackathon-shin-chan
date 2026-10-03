@@ -14,7 +14,10 @@ BOB_RULES = ROOT / ".bob" / "rules-osint-analyst"
 WEB_DIST = SRC / "web" / "dist"
 
 APP_HOST = os.getenv("APP_HOST", "127.0.0.1")
-APP_PORT = int(os.getenv("APP_PORT", "8000"))
+APP_PORT = int(os.getenv("PORT", os.getenv("APP_PORT", "8000")))
+APP_ENV = os.getenv("APP_ENV", "development")
+APP_AUTH_USERNAME = os.getenv("APP_AUTH_USERNAME", "")
+APP_AUTH_PASSWORD = os.getenv("APP_AUTH_PASSWORD", "")
 TIME_WINDOW = int(os.getenv("TIME_WINDOW_SECONDS", "60"))
 MIN_EDGE_WEIGHT = int(os.getenv("MIN_EDGE_WEIGHT", "2"))
 # 3 h: rumour networks post in bursts spread over hours; a 15-minute window never saw the demo incidents

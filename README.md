@@ -150,6 +150,8 @@ Open **http://127.0.0.1:8000** in your browser. Upload any X API v2 JSON dataset
 
 Full setup instructions, troubleshooting, and configuration options: [`docs/setup-guide.md`](docs/setup-guide.md).
 
+To deploy a password-protected demo on Render, follow [`docs/deployment.md`](docs/deployment.md). The deployment does not include local environment files or data and leaves IBM Bob and X API credentials unset.
+
 ---
 
 ## 🔍 Conversational Investigation via Bob Chat (MCP)
@@ -196,6 +198,7 @@ Bob queries the read-only `threat-intel` FastMCP server (`src/mcp_server/server.
 - [Project Specification & Technical Whitepaper](PROJECT_SPECIFICATION.md)
 - [System Architecture & Data Flow](docs/architecture.md)
 - [Setup & Deployment Guide](docs/setup-guide.md)
+- [Render Demo Deployment](docs/deployment.md)
 - [Problem Statement & Background](docs/problem-statement.md)
 - [Solution Overview & Pipeline Mechanics](docs/solution-overview.md)
 - [UI Design System ("Case File")](docs/design-system.md)
