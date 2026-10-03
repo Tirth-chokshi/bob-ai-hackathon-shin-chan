@@ -111,7 +111,7 @@ For a live baseline-to-burst stream using fictional posts, follow [`../demo/stre
 
 ## Closing Statement
 
-"SHIN-CHAN does not predict violence or identify criminals. It gives a cyber cell hours of warning: which coordinated campaign is calling people where, and when, with the evidence to verify it."
+"Social Media Threat Intelligence Engine does not predict violence or identify criminals. It gives a cyber cell hours of warning: which coordinated campaign is calling people where, and when, with the evidence to verify it."
 
 ## Demo Recovery Lines
 

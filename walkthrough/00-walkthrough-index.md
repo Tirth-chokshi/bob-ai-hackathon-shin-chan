@@ -1,6 +1,6 @@
 # Project Walkthrough Index
 
-This folder contains presentation and explanation material for the SHIN-CHAN Social Media Threat Intelligence Engine.
+This folder contains presentation and explanation material for the Social Media Threat Intelligence Engine Social Media Threat Intelligence Engine.
 
 ## Use These Files
 
@@ -15,7 +15,7 @@ This folder contains presentation and explanation material for the SHIN-CHAN Soc
 
 ## One-Sentence Explanation
 
-SHIN-CHAN helps a cyber-cell analyst find groups of accounts that act together online, understand whether the activity may represent a threat, preserve supporting evidence, and prepare a reviewable escalation brief.
+Social Media Threat Intelligence Engine helps a cyber-cell analyst find groups of accounts that act together online, understand whether the activity may represent a threat, preserve supporting evidence, and prepare a reviewable escalation brief.
 
 ## Important Positioning
 

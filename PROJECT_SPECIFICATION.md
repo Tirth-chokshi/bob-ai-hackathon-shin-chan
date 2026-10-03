@@ -1,24 +1,22 @@
-# Project Submission Document
+# Project Specification & Technical Architecture
 
 **Project Title:** Social Media Threat Intelligence Engine  
-**Team Name:** Team Shin-chan  
-**Hackathon Track:** Problem #06 — Track 2: Cyber Forensics (IBM Bob AI Innovation Hackathon / INNOVAI)  
+**System Classification:** Cyber Forensics, OSINT & Coordinated Inauthentic Behavior (CIB) Detection  
 **Repository:** [github.com/Tirth-chokshi/bob-ai-hackathon-shin-chan](https://github.com/Tirth-chokshi/bob-ai-hackathon-shin-chan)  
-**Submission Date:** September 2026  
 
 ---
 
-## 1. Executive Summary & Proposed Solution
+## 1. Executive Summary & Core Objective
 
 During sensitive public incidents (such as communal tensions, civil protests, or natural disasters), malicious actors, hyper-partisan networks, and bot rings deploy **Coordinated Inauthentic Behavior (CIB)** to rapidly amplify inflammatory rumors, manipulate public opinion, and coordinate offline violence. 
 
 Existing cyber cell monitoring workflows rely on manual post-by-post scanning or simple keyword alerts. This approach consistently fails because **individual posts often appear harmless in isolation**, while working in synchronized concert to spark dangerous real-world unrest.
 
 ### The Solution
-We have built the **Social Media Threat Intelligence Engine**, an automated, AI-powered cyber-forensics platform that:
+The **Social Media Threat Intelligence Engine** is an automated, AI-powered cyber-forensics platform that:
 1. **Prioritizes Behavior Over Content:** Ingests raw social media data (standard X API v2 format) and mathematically identifies accounts acting in locked temporal synchrony within 60-second windows across 5 orthogonal coordination vectors (same text, similar text, shared links, co-retweets, and reply pile-ons).
 2. **Pinpoints Originators & Amplifiers:** Uncovers the exact seed accounts that ignited viral campaigns (e.g., recycling years-old out-of-state violent footage with false local tags) and traces propagation through high-degree amplifier hubs.
-3. **Extracts Real-World Physical Threats with IBM Bob:** Uses IBM Bob (Granite LLM) to detect explicit offline gathering calls (*"assemble at Maujpur Chowk at 5:00 PM with sticks"*), estimates threat severity, and automatically maps observed violations to specific Indian legal statutes (**Bharatiya Nyaya Sanhita / BNS 2023** and the **IT Act**).
+3. **Extracts Real-World Physical Threats with IBM Bob:** Uses IBM Bob (Granite LLM) to detect explicit offline gathering calls (*"assemble at Maujpur Chowk at 5:00 PM with sticks"*), estimates threat severity, and automatically maps observed violations to specific Indian legal statutes (**Bharatiya Nyaya Sanhita / BNS 2023** and the **IT Act 2000**).
 4. **Delivers Actionable Police Dossiers:** Automatically drafts a Station House Officer (SHO) intelligence memorandum complete with SHA-256 evidence hashing for court admissibility under **Section 63 of the Bharatiya Sakshya Adhiniyam (BSA 2023)**.
 
 ---
@@ -28,9 +26,9 @@ We have built the **Social Media Threat Intelligence Engine**, an automated, AI-
 The system follows a modular, 5-stage pipeline designed for speed, reproducibility, and explainability:
 
 ```
-[ Raw X API v2 JSON Stream ]
-            │
-            ▼
+[ Raw X API v2 JSON Stream / Batch ]
+             │
+             ▼
 ┌───────────────────────────────────────┐
 │ 1. Ingestion & Relational Storage     │ ➔ SQLite (`x.db`) relational normalization
 │    (`engine/xstore.py`)               │    Unified SQL view (`posts`)
@@ -58,6 +56,12 @@ The system follows a modular, 5-stage pipeline designed for speed, reproducibili
 ┌───────────────────────────────────────┐
 │ 5. Dissemination & Operational UI     │ ➔ React 19 + Cytoscape.js interactive graph
 │    (`src/web/`, `brief/render.py`)    │    Print-ready SHO Dossier (HTML / PDF)
+└───────────────────┬───────────────────┘
+                    │
+                    ▼
+┌───────────────────────────────────────┐
+│ 6. Model Context Protocol (MCP)       │ ➔ FastMCP server (`src/mcp_server/server.py`)
+│    (`src/mcp_server/`)                │    Conversational investigation via Bob Chat
 └───────────────────────────────────────┘
 ```
 
@@ -67,16 +71,17 @@ The system follows a modular, 5-stage pipeline designed for speed, reproducibili
 * **Phase 3: Louvain Community Partitioning & CIB Scoring:** Applies deterministic Louvain modularity to group coordinated accounts into discrete campaigns ($c_1, c_2, \dots$). Each campaign receives an explainable 0–100 CIB score based on Speed (25%), Text Duplication (25%), Multi-Signal Diversity (15%), Fresh Account Share (15%), Burst Volume (10%), and Target Concentration (10%).
 * **Phase 4: IBM Bob Reasoning & Legal Mapping:** A representative spread sample of posts is passed to IBM Bob via headless CLI. Bob classifies threat type, determines severity (1–5), extracts planned offline gathering parameters (`where`, `at`, `what`), and maps offenses to validated statutory tables (BNS 196, BNS 353, IT Act 66D).
 * **Phase 5: Visual Investigation & Brief Generation:** Renders an interactive Cytoscape network graph, a 3-stage propagation flow (*Origin Seeds* $\to$ *Amplification Hubs* $\to$ *Public Impact*), an authentic Twitter/X forensic feed, and a single-click print-ready intelligence dossier.
+* **Phase 6: Interactive MCP Server:** Exposes read-only forensic investigation tools to IBM Bob Chat (`list_datasets`, `list_campaigns`, `get_campaign`, `get_posts`, `timeline`, `account_profile`), allowing investigators to interrogate datasets using natural language.
 
 ---
 
-## 3. Key Tools, Technologies & Sources
+## 3. Key Tools, Technologies & Dependencies
 
 | Component / Layer | Technology / Tool | Version / Source | Purpose & Role |
 |---|---|---|---|
-| **AI Reasoning & LLM** | **IBM Bob Shell 2.0** (Granite LLM) | IBM Innovation Hackathon (`npm/bobshell`, headless CLI `bob run`) | Autonomous qualitative threat classification, offline physical event extraction, and legal section mapping. |
-| **Agent Tool Protocol** | **FastMCP** | GitHub / PyPI (`fastmcp`) | Model Context Protocol server exposing graph queries, post evidence, and campaign data to Bob. |
-| **Coordination Engine** | **Coordination Network Toolkit** | QUT Digital Observatory (Queensland University of Technology, PyPI / GitHub, MIT License) | Core algorithms for detecting temporal co-occurrences (co-tweet, co-retweet, co-link, co-reply). |
+| **AI Reasoning & LLM** | **IBM Bob Shell 2.0** (Granite LLM) | IBM (`bob run` CLI) | Autonomous qualitative threat classification, offline physical event extraction, and legal section mapping. |
+| **Agent Tool Protocol** | **FastMCP** | PyPI (`fastmcp`) | Model Context Protocol server exposing graph queries, post evidence, and campaign data to Bob. |
+| **Coordination Engine** | **Coordination Network Toolkit** | QUT Digital Observatory (MIT License) | Core algorithms for detecting temporal co-occurrences (co-tweet, co-retweet, co-link, co-reply). |
 | **Graph Algorithms** | **NetworkX** | PyPI (`networkx`) | Louvain community modularity optimization, graph construction, and degree centrality calculation. |
 | **Backend Framework** | **FastAPI & Uvicorn** | PyPI (`fastapi`, `uvicorn`) | High-performance asynchronous Python REST API serving datasets, graphs, and live analysis streams. |
 | **Data Validation** | **Pydantic v2** | PyPI (`pydantic`) | Strict data typing and schema validation for API inputs, outputs, and Bob structured verdicts. |
@@ -87,7 +92,7 @@ The system follows a modular, 5-stage pipeline designed for speed, reproducibili
 
 ---
 
-## 4. Key Results & Forensic Impact
+## 4. Key Results & Forensic Capabilities
 
 * **Actionable Lead Time:** Detects coordinated bot mobilization hours before physical crowds converge, giving field police actionable warning.
 * **Explainable AI Guardrails:** 100% transparent CIB score breakdown; every legal section and physical gathering quote extracted by IBM Bob is verified in code against database rows, eliminating LLM hallucinations.
@@ -96,9 +101,9 @@ The system follows a modular, 5-stage pipeline designed for speed, reproducibili
 
 ---
 
-## 5. Team Shin-chan
+## 5. Core Engineering Team & Maintainers
 
-* **Tirth Chokshi** (Lead / Forensics) — System architecture, 5-signal coordination engine, and CIB scoring pipeline.
-* **Milind Pawar** (Frontend Engineering) — React 19 UI, Cytoscape network graph, and 3-stage propagation flow.
-* **Jainik Devada** (Bob Layer & MCP) — IBM Bob CLI orchestration, FastMCP server, and BNS legal mapping.
-* **Jigar Jariwala** (Data & Benchmarking) — X API v2 ingestion adapters, historical riot benchmarks, and evaluation.
+* **Tirth Chokshi** (Lead / Forensics Architect) — System architecture, 5-signal coordination engine, and CIB scoring pipeline.
+* **Milind Pawar** (Frontend Engineering Lead) — React 19 UI, Cytoscape network graph, and 3-stage propagation flow.
+* **Jainik Devada** (Bob Layer & MCP Engineer) — IBM Bob CLI orchestration, FastMCP server, and BNS legal mapping.
+* **Jigar Jariwala** (Data & Benchmarking Engineer) — X API v2 ingestion adapters, historical riot benchmarks, and evaluation.

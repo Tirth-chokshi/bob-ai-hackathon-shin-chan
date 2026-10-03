@@ -1,117 +1,94 @@
-# How to Submit Your Hackathon Entry
+# Contributing to Social Media Threat Intelligence Engine
 
-Follow these steps to set up your submission repository correctly.
-The judges depend on this structure to review your entry — deviations may affect your score.
-
----
-
-## Step 1 — Fork This Template
-
-1. Click the **"Use this template"** button at the top of this repository
-   (or **Fork** if you prefer)
-2. Name your repository: `bob-ai-hackathon-[your-team-name]`
-   (e.g., `bob-ai-hackathon-orion-squad`)
-3. Set visibility to **Public** so judges can access it
-4. Click **Create repository**
+Thank you for your interest in contributing to the **Social Media Threat Intelligence Engine**! This project provides Open Source Intelligence (OSINT) and Coordinated Inauthentic Behavior (CIB) forensic capabilities to law enforcement cyber cells, digital investigators, and researchers.
 
 ---
 
-## Step 2 — Clone Your Fork Locally
+## 🧭 Code of Conduct & Ethical OSINT Principles
 
+Contributors are expected to adhere to the following strict principles:
+1. **Behavior First, Content Agnostic:** The engine detects synchronized mathematical coordination (bot networks, sock puppets, inorganic bursts), not political ideology, religion, or protected speech.
+2. **Strict Non-Profiling:** Contributors must never add heuristics or features that profile individuals based on religion, caste, gender, ethnicity, or community affiliations.
+3. **Decision Support Only:** The system generates forensic leads and evidentiary briefs for trained officers. It must never produce automated executive sanctions or replace judicial due process.
+
+---
+
+## 🛠️ Local Development Setup
+
+### 1. Prerequisites
+- **Python 3.10+**
+- **Node.js 22+** and **npm**
+- **Git**
+- (Optional) **IBM Bob Shell** for live AI classification inference (`bob run`)
+
+### 2. Fork and Clone
 ```bash
-git clone https://github.com/[your-org]/bob-ai-hackathon-[your-team-name].git
-cd bob-ai-hackathon-[your-team-name]
+git clone https://github.com/Tirth-chokshi/bob-ai-hackathon-shin-chan.git
+cd bob-ai-hackathon-shin-chan
+```
+
+### 3. Backend Setup
+```bash
+# Create and activate virtual environment
+python -m venv .venv
+# Linux / macOS:
+source .venv/bin/activate
+# Windows PowerShell:
+.\.venv\Scripts\Activate.ps1
+
+# Install dependencies
+pip install -r src/requirements.txt
+pip install pytest pytest-asyncio
+```
+
+### 4. Frontend Setup
+```bash
+cd src/web
+npm ci
+npm run dev # Launches local Vite dev server at http://localhost:5173
+```
+
+### 5. Running the Full Stack App
+```bash
+# Build frontend bundle
+cd src/web && npm run build && cd ../..
+
+# Launch FastAPI server
+python src/main.py
+# Server opens at http://127.0.0.1:8000
 ```
 
 ---
 
-## Step 3 — Fill in the Required Files
+## 🧪 Testing Guidelines
 
-Work through these files in order:
+Always run tests before submitting a pull request:
 
-### 3a. `submission.yaml` ← **Start here**
-This is the most important file. Judges use it to get an overview of your entry.
-
-- Open [`submission.yaml`](submission.yaml)
-- Fill in **every field marked `# REQUIRED`**
-- Read the inline comments — they explain what each field expects
-
-### 3b. `README.md`
-- Replace every `[placeholder in brackets]` with your actual content
-
-### 3c. `docs/`
-Fill in all four documentation files:
-| File | What to write |
-|---|---|
-| [`docs/problem-statement.md`](docs/problem-statement.md) | The problem you're solving |
-| [`docs/solution-overview.md`](docs/solution-overview.md) | How your solution works |
-| [`docs/architecture.md`](docs/architecture.md) | Technical architecture diagram |
-| [`docs/setup-guide.md`](docs/setup-guide.md) | Exact steps to run your project |
-
-### 3d. `src/`
-- Put all your source code inside [`src/`](src/)
-- Copy [`src/.env.example`](src/.env.example) and add your environment variables to it
-- **Never commit a real `.env` file** — it is already in `.gitignore`
-
-### 3e. `demo/`
-| File | What to do |
-|---|---|
-| [`demo/demo-video-link.txt`](demo/demo-video-link.txt) | Replace placeholder URL with your real video link |
-| [`demo/live-demo-url.txt`](demo/live-demo-url.txt) | Add your deployed demo URL (or write "NOT DEPLOYED") |
-| [`demo/screenshots/`](demo/screenshots/) | Add 3+ screenshots named `01-*.png`, `02-*.png`, etc. |
-
-### 3f. `presentation/`
-- Add your slide deck as [`presentation/slides.pdf`](presentation/) (preferred) or `.pptx`
-
----
-
-## Step 4 — Verify Your Submission Passes Validation
-
-Every push to your repository triggers the **Validate Submission** GitHub Action automatically.
-
-To check manually:
-1. Go to your repo on GitHub
-2. Click the **Actions** tab
-3. Look for **✅ Validate Submission**
-4. A green checkmark means your submission is structurally complete
-5. A red X means something is missing — click the run to see what
-
-You can also run the validation locally:
 ```bash
-# Install yq first: https://github.com/mikefarah/yq#install
-yq '.' submission.yaml   # checks YAML is valid
+# Run backend test suite
+python -m pytest
+
+# Run frontend build check
+cd src/web && npm run build
 ```
 
----
-
-## Step 5 — Submit Your Repository URL
-
-Once validation passes:
-
-1. Copy your repository URL:
-   `https://github.com/[your-org]/bob-ai-hackathon-[your-team-name]`
-
-2. Submit it via the **official entry form** at:
-   `[ORGANIZER: INSERT FORM URL HERE]`
-
-3. **Deadline:** `[ORGANIZER: INSERT DEADLINE HERE]`
-
-> ⚠️ Submissions after the deadline will not be reviewed.
-> Changes after the deadline are not considered — make sure everything is complete before submitting.
+Ensure all tests pass and no linter warnings are introduced.
 
 ---
 
-## Checklist Before You Submit
+## 🔄 Pull Request Workflow
 
-- [ ] `submission.yaml` — all required fields filled
-- [ ] `README.md` — no `[placeholder]` text remaining
-- [ ] `docs/setup-guide.md` — someone else can run your project using these instructions
-- [ ] `src/` — all source code committed (no `node_modules`, no `.env`)
-- [ ] `demo/demo-video-link.txt` — real video URL (3–5 min showing the app working)
-- [ ] `demo/screenshots/` — at least 3 screenshots of the running application
-- [ ] `presentation/slides.pdf` — slide deck present
-- [ ] GitHub Actions **✅ Validate Submission** is green
-- [ ] Repository is **Public**
-- [ ] Entry form submitted before the deadline
+1. **Branch Naming:** Use clear branch names like `feat/new-connector`, `fix/timeline-bounds`, or `docs/update-guide`.
+2. **Commit Messages:** Follow conventional commits:
+   - `feat(...)`: New feature or capability
+   - `fix(...)`: Bug fix
+   - `docs(...)`: Documentation updates
+   - `test(...)`: Adding or updating tests
+   - `refactor(...)`: Code cleanup without behavior change
+3. **Open a Pull Request:** Describe the problem your PR solves, how you tested it, and link any related issues.
 
 ---
+
+## 📜 License
+
+This project is licensed under the MIT License.

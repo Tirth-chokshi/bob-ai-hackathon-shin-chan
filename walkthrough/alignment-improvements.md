@@ -2,7 +2,7 @@
 
 > **Status (27 Sep 2026).** Done: rolling-window stream API (`/api/streams`); structured offline-threat extraction (IBM Bob's planned gathering: place quoted from a post, time checked); evidence limited to posts Bob was shown; brief wording no longer claims BSA compliance or admissibility; realistic mock incidents (three incident packs). Not done: per-record provenance and run manifests, review states and audit logs, versioned legal metadata, score calibration on labeled real data. The sections below are the original proposal.
 
-This walkthrough explains the changes that would move SHIN-CHAN closer to the problem statement: detecting coordinated online campaigns, identifying possible offline threats, mapping findings for legal review, and producing an actionable, time-stamped brief for a cyber cell.
+This walkthrough explains the changes that would move Social Media Threat Intelligence Engine closer to the problem statement: detecting coordinated online campaigns, identifying possible offline threats, mapping findings for legal review, and producing an actionable, time-stamped brief for a cyber cell.
 
 The project is already a strong batch-analysis prototype. The changes below focus on making its claims, workflow, evidence handling, and evaluation match the operational problem more closely without presenting automated output as a final police or legal decision.
 

@@ -62,7 +62,7 @@ The highest-value improvements are:
 
 Use this sentence:
 
-> SHIN-CHAN is a human-reviewed intelligence and evidence-organization tool. It does not infer protected identity, automatically label people as criminals, recommend force, or replace established legal and organizational procedures.
+> Social Media Threat Intelligence Engine is a human-reviewed intelligence and evidence-organization tool. It does not infer protected identity, automatically label people as criminals, recommend force, or replace established legal and organizational procedures.
 
 ## What should we avoid saying?
 

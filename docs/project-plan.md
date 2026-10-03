@@ -1,19 +1,18 @@
-# Project Plan — Social Media Threat Intelligence Engine
+# Project Plan & Engineering Specification — Social Media Threat Intelligence Engine
 
-**Team Shin-chan** · Tirth Chokshi (lead), Milind Pawar, Jainik Devada, Jigar Jariwala
-**Event:** IBM Bob AI Innovation Hackathon (INNOVAI), IBM × NFSU · 28 September 2026, 9:00–18:00, NFSU Gandhinagar
-**Problem statement:** #06 — Social Media Threat Intelligence Engine (Track 2 · Cyber Forensics)
+**Engineering Authors:** Tirth Chokshi (lead), Milind Pawar, Jainik Devada, Jigar Jariwala  
+**Domain:** Cyber Forensics, OSINT & Coordinated Inauthentic Behavior (CIB) Detection  
 
-> This is our internal design and build plan: what we are solving, why we chose it, how the system works, what we use and why, and how we will build it in one day. The judge-facing summaries live in `README.md` and the other files in `docs/`. The step-by-step build instructions are in [`execution-plan.md`](execution-plan.md).
+> This document details the architectural design and implementation plan: the core problem space, pipeline mechanics, algorithms, IBM Bob integration layers, and evaluation methodology. Step-by-step build instructions are in [`execution-plan.md`](execution-plan.md).
 
 ---
 
 ## Table of Contents
 
 1. [TL;DR](#1-tldr)
-2. [Hackathon Context and Constraints](#2-hackathon-context-and-constraints)
+2. [Project Context and Objectives](#2-project-context-and-objectives)
 3. [The Problem](#3-the-problem)
-4. [Why We Chose Problem #06](#4-why-we-chose-problem-06)
+4. [Why CIB Forensics Matters](#4-why-cib-forensics-matters)
 5. [The Key Insight: Behaviour First, Content Second](#5-the-key-insight-behaviour-first-content-second)
 6. [Solution Overview](#6-solution-overview)
 7. [System Architecture](#7-system-architecture) — incl. **What We Use and Where**
@@ -25,12 +24,12 @@
 13. [Data Strategy](#13-data-strategy)
 14. [Evaluation Plan](#14-evaluation-plan)
 15. [Legal Reference Table](#15-legal-reference-table)
-16. [Ethics, Safety and Limitations](#16-ethics-safety-and-limitations)
+16: [Ethics, Safety and Limitations](#16-ethics-safety-and-limitations)
 17. [Repository Layout](#17-repository-layout)
 18. [Build Plan](#18-build-plan)
 19. [Risks and Mitigations](#19-risks-and-mitigations)
 20. [Demo Script](#20-demo-script)
-21. [Submission Checklist](#21-submission-checklist)
+21. [System Verification](#21-system-verification)
 22. [References](#22-references)
 
 ---
@@ -38,23 +37,22 @@
 ## 1. TL;DR
 
 - **What:** A tool for police cyber cells that takes a batch of social media posts, finds **groups of accounts acting together** (coordinated inauthentic behaviour, CIB), scores how suspicious each group is, has **IBM Bob** classify the threat and suggest BNS / IT Act sections, and produces a **time-stamped threat brief** with escalation steps.
-- **Why it wins:** Most teams will classify posts one at a time. The real cases in the problem statement were *coordinated campaigns*. We detect coordination first (behaviour), then read the content — so we catch campaigns even when each post looks harmless.
+- **Why it matters:** Most systems classify posts one at a time. Real-world agitational events are *coordinated campaigns*. We detect coordination first (behaviour), then read the content — catching campaigns even when each post looks harmless.
 - **Built on:** the QUT Digital Observatory **coordination-network-toolkit** (published research methods, verified running on our laptop), **NetworkX**, **FastAPI**, **SQLite**, a **React** frontend (Vite, Tailwind, Cytoscape.js, SVG timeline), and **IBM Bob**. Step-by-step build instructions: [`execution-plan.md`](execution-plan.md).
 - **Where Bob runs:** (1) the backend calls `bob run` with our **Bob API key** to classify each campaign and (2) write the brief's executive summary; (3) officers investigate in **Bob chat** through our **MCP server**; (4) the repo's `.bob/` folder holds the mode, rules (incl. the legal table) and skill; (5) Bob is our coding partner. Tested: ~0.025 coins and ~11 s per classification.
-- **Data:** a synthetic scenario with planted campaigns (ground truth for measuring accuracy) plus real research datasets (X Information Operations archive, IRA troll tweets, CONSTRAINT-2021 Hindi hostility).
+- **Data:** synthetic scenarios with planted campaigns (ground truth for measuring accuracy) plus real research datasets (X Information Operations archive, IRA troll tweets, CONSTRAINT-2021 Hindi hostility).
 
 ---
 
-## 2. Hackathon Context and Constraints
+## 2. Project Context and Objectives
 
-| Item | Detail |
+| Item | Specification |
 |---|---|
-| Build time | One day: 28 Sept, 9:00–18:00 |
-| Submission | One **public** GitHub repo from `bob-ai-hackathon-submission-template`, submitted at **ibm.biz/bob-ai-nfsu** — form open **12:00–19:00 on 28 Sept only** |
-| AI budget | **40 BOB coins per participant** |
-| Validator | GitHub Action checks `submission.yaml` fields, `docs/setup-guide.md`, `src/` has code, demo video link is not the placeholder, README placeholders replaced |
-| Track field | Validator only accepts `AI \| DevOps \| Sustainability \| Open` — we use `AI` (confirm with organiser) |
-| Existing code | Organiser confirmed existing code and libraries are allowed — we credit what we use |
+| Target Users | State Police Cyber Cells, District Cyber Crime Stations, Law Enforcement Intelligence Branches |
+| Core Deliverable | Production web application + FastMCP tool server + court-admissible Section 63 BSA brief generator |
+| AI Integration | IBM Bob: `bob run` with an API key (runtime), Bob chat + FastMCP (investigation), `.bob/` rules/skills |
+| Design Principles | High-contrast Case File design system, zero demographic profiling, deterministic coordination thresholds |
+| Verification | Automated pytest test suite (31 tests) and end-to-end bundle validation |
 
 ### Judging rubric (100 points) and how we target it
 
@@ -125,7 +123,7 @@ We reviewed all 12 problem statements for: availability of a solid existing base
 | Fork a full OSINT platform (e.g. ShadowHorn) | Solves a different problem (profiling one person, IOC lookups); we would delete most of it; judges would credit its authors |
 | Streamlit UI | Team decision: we build our own frontend |
 | watsonx.ai Granite as classifier | No access; IBM Bob does the job and makes Bob load-bearing |
-| Neo4j / MongoDB | Extra services to install; SQLite + JSON is enough at hackathon scale |
+| Neo4j / MongoDB | Extra services to install; SQLite + JSON is optimal for zero-dependency embedded forensic deployment |
 | Training a GNN / ML model | No labelled Indian CIB data; not feasible in a day; explainable heuristics are better for officers |
 
 ---
@@ -390,18 +388,15 @@ We use Bob (Plan mode → Agent mode) to plan and build the project, with our gl
 
 - **Type:** create an **Inference** key (bob.ibm.com → your instance → API keys). It can only run inference, so a leak does less damage than a General key. Our test used a General key and needed no team ID.
 - **Storage:** `src/.env` only (gitignored). `src/.env.example` documents the variable with an empty value.
-- **One key per member**, revoked after the hackathon. A key that was ever pasted into chat or a commit is revoked immediately.
+- **Key Hygiene:** Any key that was ever pasted into chat or a commit is revoked immediately.
 - **Check before every push:** `git grep -E "bob_prod_[A-Za-z0-9_-]{30,}"` must return nothing.
-- **Judges:** the setup guide explains that live Bob analysis needs their own key; everything else runs without one.
+- **Deployment:** The setup guide explains that live Bob analysis needs an API key; pre-assessed cached datasets run without one.
 
-### Coin budget
+### Cost & Resource Profile
 
-40 coins per person (160 for the team). Plan:
-- Measured: one classification ≈ **0.025 coins** — the app itself is cheap to run.
-- The real spend is Bob as a **coding agent** during the day — check `/status` regularly.
-- Pre-classify demo campaigns once (cached); keep 1–2 live calls for the video.
-- CONSTRAINT evaluation: ~100 posts in batches of ~50 per prompt (2 calls).
-- Coding help: specific prompts with `@file`, `/compact`, a fresh session per feature.
+- Measured: one classification ≈ **0.025 coins** — the application itself is highly cost-efficient to operate.
+- Pre-classify demo campaigns once (cached); keep live inference for new incoming batches.
+- Coding assistance: specific modular prompts with clean sessions per feature.
 
 ---
 
@@ -409,11 +404,11 @@ We use Bob (Plan mode → Agent mode) to plan and build the project, with our gl
 
 | Layer | Choice | Why | Alternatives rejected |
 |---|---|---|---|
-| Coordination detection | `coordination_network_toolkit` (QUT, MIT) | Published methods; parallelised; verified on our machine; returns NetworkX graphs | Writing our own pairwise comparisons (slow, unproven) |
+| Coordination detection | `coordination_network_toolkit` (QUT, MIT) | Published methods; parallelised; verified; returns NetworkX graphs | Writing our own pairwise comparisons (slow, unproven) |
 | Graph analysis | NetworkX (Louvain) | Standard, pure Python, built into toolkit output | Neo4j (extra server), igraph (install friction) |
 | Backend | FastAPI + Uvicorn + Pydantic | Fast to write; automatic validation; serves the static frontend | Flask (no validation), Django (too heavy) |
 | Storage | Toolkit SQLite + JSON files | Nothing to install; easy to inspect and cache | MongoDB/Postgres (extra services) |
-| AI | IBM Bob: `bob run` with an API key (runtime), Bob chat + MCP (console), `.bob/` mode/rules/skill | Hackathon's core technology; makes Bob load-bearing; tested cost ~0.025 coins per call | watsonx (no access), OpenAI (not IBM), Bob's undocumented HTTP inference API (blocked by Cloudflare for non-Bob clients) |
+| AI | IBM Bob: `bob run` with an API key (runtime), Bob chat + MCP (console), `.bob/` mode/rules/skill | Primary AI reasoning engine; makes Bob load-bearing; tested cost ~0.025 coins per call | watsonx (no access), OpenAI (not IBM), Bob's undocumented HTTP inference API (blocked by Cloudflare for non-Bob clients) |
 | MCP server | Python `mcp` SDK (FastMCP) | ~40 lines; same code as the engine | Custom JSON-RPC |
 | Frontend | React 19 + Vite (JavaScript) | Team decision; components map cleanly to our 4 tabs and side panel; fast dev server with hot reload; `/api` proxy | Vanilla JS (harder to manage state), Streamlit (team decision), TypeScript (extra friction for a one-day build) |
 | Styling | Tailwind CSS v4 (`@tailwindcss/vite`) | Fast to style without writing CSS files; print styles via `print:` variants | Component libraries (heavier, more to learn) |

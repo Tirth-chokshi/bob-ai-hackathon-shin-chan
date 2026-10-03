@@ -1,6 +1,6 @@
-# SHIN-CHAN Source Code Architecture
+# Social Media Threat Intelligence Engine — Source Code Architecture
 
-This directory houses the complete implementation of the **Social Media Threat Intelligence Engine (Track 2: Cyber Forensics)** for the IBM Bob AI Innovation Hackathon.
+This directory houses the complete source code implementation of the **Social Media Threat Intelligence Engine**.
 
 ## Architecture & Directory Layout
 

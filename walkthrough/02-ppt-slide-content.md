@@ -4,14 +4,14 @@ This is a ready-to-use 8-slide structure. Keep each slide visual and move detail
 
 ## Slide 1: Title
 
-**Title:** SHIN-CHAN: Social Media Threat Intelligence Engine
+**Title:** Social Media Threat Intelligence Engine
 
 **Subtitle:** Detecting coordinated online campaigns before they become offline risks
 
 **Include:**
 
-- Team Shin-chan
-- IBM Bob AI Innovation Hackathon
+- The Engineering Team
+- Social Media Threat Intelligence Project
 - Track 2: Cyber Forensics
 - One screenshot of the command center
 
@@ -166,7 +166,7 @@ Incidents are generated (fictional districts) over real CONSTRAINT-2021 backgrou
 
 **Closing line:**
 
-"SHIN-CHAN helps analysts see the campaign behind the posts, verify the evidence, and act through established procedures."
+"Social Media Threat Intelligence Engine helps analysts see the campaign behind the posts, verify the evidence, and act through established procedures."
 
 ## Presentation Design Notes
 

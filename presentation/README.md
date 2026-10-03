@@ -1,30 +1,22 @@
-# Presentation
+# Project Presentations & Slide Decks
 
-Place your slide deck in this folder.
+This directory contains visual presentation materials, slide decks, and briefing summaries for the **Social Media Threat Intelligence Engine**.
 
-## Accepted Formats
+---
 
-  slides.pdf      ← Preferred (universally viewable)
-  slides.pptx     ← Acceptable
-  slides.key      ← Acceptable (macOS Keynote)
+## 📊 Available Decks
 
-Rename your file to `slides.pdf` (or `slides.pptx`) so the evaluation
-pipeline can locate it reliably.
+- **`slides.pdf`**: Primary slide deck formatted in high-resolution PDF for universal viewing.
+- **`slides.pptx`**: PowerPoint presentation deck with editable diagrams and typography.
+- **`Social Media Threat Intelligence Engine.pptx`**: Detailed system architecture walkthrough deck.
 
-## Recommended Slide Structure (5–8 slides)
+---
 
-  Slide 1: Title — Project name, team name, track
-  Slide 2: Problem — What problem? Who has it? Why does it matter?
-  Slide 3: Solution — What you built in one clear diagram or screenshot
-  Slide 4: Architecture — How the system works technically
-  Slide 5: Demo / Key Feature — Screenshot or flow of your best feature
-  Slide 6: IBM Technologies — Specifically how you used them
-  Slide 7: Results / Impact — What does success look like? Any metrics?
-  Slide 8: Team — Names, roles, what each person built
+## 🎯 Presentation Outline
 
-## Tips
-
-- Keep slides visual — diagrams beat bullet points
-- One idea per slide
-- Font size minimum 24pt for readability
-- Do not paste large code blocks into slides — reference the repo instead
+1. **The Core Challenge:** Synchronized online coordination triggering offline public violence.
+2. **Behavior-First Approach:** Detecting multi-signal temporal synchronization vs. keyword searching.
+3. **5-Stage Pipeline:** Ingestion, multi-network graph fusion, Louvain clustering, IBM Bob semantic reasoning, and legal briefing.
+4. **IBM Bob Integration:** Headless classification and FastMCP server for natural language interrogation.
+5. **Real-World Case Study:** 2020 Delhi Riots recycled media disinformation forensic investigation.
+6. **Statutory Legal Impact:** Bharatiya Nyaya Sanhita (BNS 2023) and Section 63 Bharatiya Sakshya Adhiniyam (BSA) court-admissible dossiers.

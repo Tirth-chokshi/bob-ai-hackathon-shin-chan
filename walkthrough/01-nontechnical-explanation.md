@@ -1,4 +1,4 @@
-# SHIN-CHAN in Plain Language
+# Social Media Threat Intelligence Engine in Plain Language
 
 ## The Problem
 
@@ -15,7 +15,7 @@ Reading every post manually is slow and makes it easy to miss the pattern.
 
 ## The Solution
 
-SHIN-CHAN works like an early-warning and investigation assistant:
+Social Media Threat Intelligence Engine works like an early-warning and investigation assistant:
 
 1. An analyst uploads a batch of social-media posts (a spreadsheet, a WhatsApp chat export or a Telegram export, in Hindi, Hinglish or English).
 2. The system converts different file formats into one common format.
@@ -43,7 +43,7 @@ The system would:
 
 ## What Makes It Different
 
-Most content classifiers read posts one at a time. SHIN-CHAN reads the relationship between posts and accounts first. Its core idea is:
+Most content classifiers read posts one at a time. Social Media Threat Intelligence Engine reads the relationship between posts and accounts first. Its core idea is:
 
 > Behavior first, content second.
 
@@ -64,10 +64,10 @@ The system validates Bob's output. It does not allow Bob to invent evidence post
 
 ## What the System Does Not Claim
 
-SHIN-CHAN does not automatically prove that accounts are fake, identify a person's religion or caste, decide that a crime happened, or recommend force. A high score is a lead for trained analysts, not a verdict.
+Social Media Threat Intelligence Engine does not automatically prove that accounts are fake, identify a person's religion or caste, decide that a crime happened, or recommend force. A high score is a lead for trained analysts, not a verdict.
 
 Legal references are suggestions for a qualified legal officer. The final decision remains with authorized human personnel.
 
 ## Thirty-Second Explanation
 
-"SHIN-CHAN is an IBM Bob-powered OSINT tool for cyber cells. It detects groups of accounts that post similar content at nearly the same time, scores the coordination pattern, asks Bob to interpret the possible threat, and generates a time-stamped evidence brief. It helps officers move from thousands of disconnected posts to a small number of explainable campaigns that need human review."
+"Social Media Threat Intelligence Engine is an IBM Bob-powered OSINT tool for cyber cells. It detects groups of accounts that post similar content at nearly the same time, scores the coordination pattern, asks Bob to interpret the possible threat, and generates a time-stamped evidence brief. It helps officers move from thousands of disconnected posts to a small number of explainable campaigns that need human review."
