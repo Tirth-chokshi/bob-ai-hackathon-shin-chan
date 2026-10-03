@@ -1,1 +1,1 @@
-NOT DEPLOYED — run locally using docs/setup-guide.md (accessible at http://localhost:8000)
+https://social-threat-intel-demo.onrender.com
