@@ -11,6 +11,7 @@ FROM python:3.13-slim
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     APP_HOST=0.0.0.0 \
+    APP_ENV=production \
     PYTHONPATH=/app/src
 
 WORKDIR /app

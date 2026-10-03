@@ -6,17 +6,17 @@ This deploys the app as a password-protected demo. The Render URL is reachable f
 
 1. Rotate the IBM Bob API key that was present in the local `src/.env` before using it anywhere else. The container deliberately does not copy `.env`, `data/`, or local virtual environments.
 2. In Render, create a new **Blueprint** from this repository and select `render.yaml`.
-3. When prompted, set `APP_AUTH_USERNAME` and `APP_AUTH_PASSWORD`. Use a unique, randomly generated password and store it only in Render's environment settings and an approved password manager. For example, generate one locally with `openssl rand -hex 32`.
+3. When prompted, set `APP_AUTH_USERNAME`, `APP_AUTH_PASSWORD`, and `BOB_API_KEY`. Enter your IBM Bob API key securely into Render's environment variable prompt so it remains completely hidden and never committed to version control. Set a unique, randomly generated password for basic auth (e.g. generate one locally with `openssl rand -hex 32`).
 4. Deploy. Render builds the frontend and Python service from the `Dockerfile`; the `/_health` endpoint is used for health checks.
 5. Open the service URL. The browser's Basic Auth prompt should appear before the app loads.
 
 Production mode fails closed: if either authentication variable is missing, the app returns `503` instead of serving the UI or API. Do not remove the auth variables to make the demo easier to access.
 
 ## IBM Bob and X API
+ 
+`BOB_API_KEY` is configured as a protected secret in Render (`sync: false` in `render.yaml`), ensuring no credentials are ever exposed in Git repositories or client bundles. The application supports upload, forensic coordination analysis, network graph visualization, timeline clustering, and all cached Bob assessments.
 
-No `BOB_API_KEY` workaround is needed for the demo: leave it unset. The app still supports upload, coordination analysis, and any cached Bob assessments, but cannot request new Bob classifications. The container does not install IBM Bob Shell, so adding a key to Render alone would not enable inference. X search is also disabled because `X_BEARER_TOKEN` is not configured.
-
-If live Bob or X API access is added later, enter credentials only as Render environment secrets. Never add them to `render.yaml`, the Docker image, frontend build variables, or committed files. Live Bob inference additionally requires a supported server-side Bob CLI installation.
+If X search is needed, add `X_BEARER_TOKEN` as a secret environment variable in Render. Never add API keys to `render.yaml`, the Docker image, frontend build variables, or committed files.
 
 ## Demo Data Limits
 

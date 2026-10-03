@@ -13,3 +13,9 @@ services:
         sync: false
       - key: APP_AUTH_PASSWORD
         sync: false
+      - key: BOB_API_KEY
+        sync: false
+      - key: BOB_MAX_COST
+        value: "0.25"
+      - key: X_BEARER_TOKEN
+        sync: false
