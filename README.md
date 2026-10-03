@@ -129,8 +129,8 @@ All statutory suggestions are filtered against our verified legal reference tabl
 ### 2. Setup
 ```bash
 # Clone the repository
-git clone https://github.com/Tirth-chokshi/bob-ai-hackathon-shin-chan.git
-cd bob-ai-hackathon-shin-chan
+git clone https://github.com/Tirth-chokshi/social-threat-intel-engine.git
+cd social-threat-intel-engine
 
 # Install backend dependencies
 python -m pip install -r src/requirements.txt

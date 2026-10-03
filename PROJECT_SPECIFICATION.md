@@ -2,7 +2,7 @@
 
 **Project Title:** Social Media Threat Intelligence Engine  
 **System Classification:** Cyber Forensics, OSINT & Coordinated Inauthentic Behavior (CIB) Detection  
-**Repository:** [github.com/Tirth-chokshi/bob-ai-hackathon-shin-chan](https://github.com/Tirth-chokshi/bob-ai-hackathon-shin-chan)  
+**Repository:** [github.com/Tirth-chokshi/social-threat-intel-engine](https://github.com/Tirth-chokshi/social-threat-intel-engine)  
 
 ---
 

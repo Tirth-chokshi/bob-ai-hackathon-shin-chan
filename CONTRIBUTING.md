@@ -23,8 +23,8 @@ Contributors are expected to adhere to the following strict principles:
 
 ### 2. Fork and Clone
 ```bash
-git clone https://github.com/Tirth-chokshi/bob-ai-hackathon-shin-chan.git
-cd bob-ai-hackathon-shin-chan
+git clone https://github.com/Tirth-chokshi/social-threat-intel-engine.git
+cd social-threat-intel-engine
 ```
 
 ### 3. Backend Setup

@@ -59,8 +59,8 @@ On Windows (PowerShell): `Copy-Item src/.env.example src/.env`
 ### 1. Clone the Repository
 
 ```bash
-git clone https://github.com/Tirth-chokshi/bob-ai-hackathon-shin-chan.git
-cd bob-ai-hackathon-shin-chan
+git clone https://github.com/Tirth-chokshi/social-threat-intel-engine.git
+cd social-threat-intel-engine
 ```
 
 ### 2. Configure Environment
