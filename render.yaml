@@ -17,5 +17,3 @@ services:
         sync: false
       - key: BOB_MAX_COST
         value: "0.25"
-      - key: X_BEARER_TOKEN
-        sync: false
